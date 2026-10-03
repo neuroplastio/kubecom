@@ -4,3 +4,7 @@
 /kubectl
 /kubecom
 /bin
+
+# castrec (CAST-01): its marks before the merge, and the cast before its rename.
+docs/screencast.cast.marks
+docs/screencast.cast.tmp

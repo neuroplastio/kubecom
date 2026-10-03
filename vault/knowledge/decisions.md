@@ -8250,3 +8250,30 @@ constraints, so a later leg does not relitigate it from scratch:
    becomes coherent (reverse the records, each internally forward). A later leg
    may revisit this decision *then*, and should supersede it rather than bolt an
    order flag onto the line-granular pager.
+
+## D290 — The screencast is also an asciicast, from the same run, and neuroplast.io reads it from `v1` (2026-10-03, CAST-01)
+
+The maintainer wants the tour played on neuroplast.io by a terminal player of its own (a HOTTY
+surface drawing a terminal emulator's screen), with the GIF kept for the README. vhs has no cast
+output, and a cast of the whole terminal would carry the tmux status line and the setup the tape
+types while hidden. What a future leg must not silently contradict:
+
+1. **One tape, two recordings.** `make screencast` writes `docs/screencast.gif` (vhs) and
+   `docs/screencast.cast` (asciicast v3) in the same run: tmux's `pipe-pane` hands the pane
+   kubecom runs in to `castrec` (`docs/screencast/castrec`), which records that pane's bytes
+   only, starting from the pane as it stands when the pipe opens. Never commit one recording
+   without the other from the same run — a cast from another run films another tour.
+2. **Captions are markers.** Every caption step sets the status line and, in the same tmux
+   command, hands it to castrec: `set -g status-left '…' ; run-shell 'castrec mark
+   #{q:status-left}'`. The cast carries them as `m` events for the player to draw however it
+   draws captions. `TestScreencastCastMatchesTheTape` fails a caption step with no mark, and a
+   committed cast whose markers are not the tape's captions, in order.
+3. **The cast's URL is a public contract.** neuroplast.io loads
+   `https://raw.githubusercontent.com/neuroplastio/kubecom/v1/docs/screencast.cast` at runtime
+   (served with `access-control-allow-origin: *` and a 300 s cache), so a re-recording pushed
+   to `v1` reaches the site within minutes and without a redeploy. Moving or renaming the file
+   breaks the site, and so does M5-11's `v1` → `main` rename unless the site's URL moves with it.
+4. **D181 pt 1, amended.** A recording is still real and never fabricated, and it still goes in
+   front of the maintainer's eyes. An agent may run `make screencast` when the maintainer
+   provides the cluster and asks for it — this one was recorded against the maintainer's
+   `k3d-kubecom-story` at their request.

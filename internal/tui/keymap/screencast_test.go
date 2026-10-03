@@ -1,6 +1,7 @@
 package keymap
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -149,6 +150,64 @@ func TestScreencastAssetAndReadmeAgree(t *testing.T) {
 		t.Errorf("%s exists but %s never references it — embed it, or delete it", out, readmePath)
 	case !recorded && referenced:
 		t.Errorf("%s references %s, which does not exist — a README must not point at a missing image", readmePath, out)
+	}
+}
+
+// castPath is the asciicast castrec writes in the same run as the GIF (CAST-01).
+var castPath = filepath.Join("..", "..", "..", "docs", "screencast.cast")
+
+// tapeCaption is a caption step: the status line the tape sets, and the marker
+// it hands castrec in the same tmux command.
+var tapeCaption = regexp.MustCompile(`:set -g status-left '\s*(?:#\[[^\]]*\])?([^']*)' ; run-shell 'castrec mark #\{q:status-left\}'`)
+
+// TestScreencastCastMatchesTheTape holds the recorded cast to the tape that made
+// it (D290): a cast whose markers are not the tape's captions, in order, was
+// recorded from another tour, or lost its captions on the way, and the player on
+// neuroplast.io would show the tour without them. Every caption step must hand
+// its caption to castrec, so the guard also fails a `set` with no `run-shell`.
+func TestScreencastCastMatchesTheTape(t *testing.T) {
+	var captions []string
+	for i, line := range tapeLines(t) {
+		if !strings.Contains(line, ":set -g status-left") {
+			continue
+		}
+		m := tapeCaption.FindStringSubmatch(line)
+		if m == nil {
+			t.Errorf("%s:%d: a caption that never reaches the cast — pair it with run-shell 'castrec mark #{q:status-left}'", tapePath, i+1)
+			continue
+		}
+		captions = append(captions, strings.TrimSpace(m[1]))
+	}
+
+	data, err := os.ReadFile(castPath)
+	if os.IsNotExist(err) {
+		return // not recorded yet: `make screencast` writes it with the GIF
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	var header struct {
+		Version int `json:"version"`
+		Term    struct {
+			Cols, Rows int
+		} `json:"term"`
+	}
+	if err := json.Unmarshal([]byte(lines[0]), &header); err != nil || header.Version != 3 || header.Term.Cols == 0 || header.Term.Rows == 0 {
+		t.Fatalf("%s: header %q is no asciicast v3 with a size (%v)", castPath, lines[0], err)
+	}
+	var markers []string
+	for _, l := range lines[1:] {
+		var ev []any
+		if err := json.Unmarshal([]byte(l), &ev); err != nil || len(ev) != 3 {
+			t.Fatalf("%s: event %q: %v", castPath, l, err)
+		}
+		if ev[1] == "m" {
+			markers = append(markers, ev[2].(string))
+		}
+	}
+	if strings.Join(markers, "\n") != strings.Join(captions, "\n") {
+		t.Errorf("%s has markers %q, the tape's captions are %q — re-record with `make screencast`", castPath, markers, captions)
 	}
 }
 

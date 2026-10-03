@@ -61,7 +61,11 @@ test-envtest:
 #
 # The binary is built here and put first on PATH so the recording is always of this
 # checkout, never of a stale `kubecom` someone installed months ago.
+#
+# The same run writes docs/screencast.cast (CAST-01, D290): tmux pipes kubecom's pane to
+# castrec, built here too, and the tour's captions reach it as markers.
 BIN_DIR ?= $(CURDIR)/bin
 screencast:
 	go build -o $(BIN_DIR)/kubecom ./cmd/kubecom
+	go build -o $(BIN_DIR)/castrec ./docs/screencast/castrec
 	PATH="$(BIN_DIR):$$PATH" vhs docs/screencast/screencast.tape

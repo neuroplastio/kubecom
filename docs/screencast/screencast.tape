@@ -1,6 +1,8 @@
-# kubecom screencast tape (M5-09) — records docs/screencast.gif with vhs.
+# kubecom screencast tape (M5-09) — records docs/screencast.gif with vhs, and the same
+# tour as docs/screencast.cast (CAST-01, D290), an asciicast of kubecom's own pane that
+# castrec (docs/screencast/castrec) writes while vhs films it.
 #
-#     make screencast        # builds ./bin/kubecom, then runs vhs on this file
+#     make screencast        # builds ./bin/kubecom and ./bin/castrec, then runs vhs on this file
 #
 # What the recording needs, none of which a sandbox has (which is why the tape is
 # committed but the GIF is recorded by a human — see
@@ -13,14 +15,15 @@
 #   * `kubecom` on PATH — `make screencast` puts *this checkout's* binary there, so
 #     the GIF always shows the code it was recorded from.
 #
-# TUNE: three strings in the tour are cluster-specific — the resource filter (`shop`
-# below), the log grep query (`info`) and the cluster-search query. `shop` is used
-# twice on purpose: the filter step proves there is a matching pod, and the search
-# step reuses the same string so the cluster-wide demo cannot come back empty — it
-# must show the objects the tour has already put on screen (feedback
-# 2026-08-09-screencast-tape-tuning). Change any of the three to whatever reads best
-# on the cluster you record against, re-run `make screencast`, and commit the GIF
-# with the tape change.
+# TUNE: three strings in the tour are cluster-specific — the resource filter
+# (`logspam` below), the log grep query (`info`) and the cluster-search query. The
+# filter must leave the pod whose logs the tour opens on the selected row, a pod that
+# prints lines the grep matches; the Pods table lists every namespace and the filter
+# reads names. The search reuses the filter's string so the cluster-wide demo cannot
+# come back empty — it must show the objects the tour has already put on screen
+# (feedback 2026-08-09-screencast-tape-tuning). Change any of the three to whatever
+# reads best on the cluster you record against, re-run `make screencast`, and commit
+# the GIF and the cast with the tape change.
 #
 # Reruns are reproducible: kubecom's per-context state (remembered pane, menu pins,
 # last namespace — CTX-MEM) is pointed at a throwaway XDG dir that the setup below
@@ -53,7 +56,7 @@ Hide
 Type@1ms "./docs/screencast/setup.sh" Enter
 Sleep 1s
 
-Type@1ms "export PATH=$PWD/bin:$PATH" Enter
+Type@1ms "export PATH=$PWD/bin:$PATH PS1='$ '" Enter
 
 # Point kubecom's state at a throwaway XDG dir and wipe it, so this run starts from
 # the welcome screen no matter what the last run left behind (the remembered pane,
@@ -62,14 +65,23 @@ Type@1ms "export PATH=$PWD/bin:$PATH" Enter
 # kubecom-input: reset kubecom's per-run state, then redirect its state dirs
 Type@1ms "rm -rf /tmp/kubecom-screencast && export XDG_CONFIG_HOME=/tmp/kubecom-screencast && export XDG_CACHE_HOME=/tmp/kubecom-screencast/cache" Enter
 
-# kubecom-input: tmux prefix
-Ctrl+B
-Type@1ms ":set -g status-left '   #[fg=cyan,bold]Welcome to kubecom!'" Enter
-
 # kubecom-input: clear the recording shell
 Type@1ms "clear"
 # kubecom-input: run it
 Enter
+Sleep 500ms
+
+# The cast (CAST-01, D290): tmux pipes the pane's output to castrec from here,
+# and castrec starts the cast with the pane as it stands, the clean prompt. The
+# captions below reach it as markers, each `run-shell` beside its `set`.
+# kubecom-input: tmux prefix
+Ctrl+B
+Type@1ms ":pipe-pane -o 'castrec rec #{socket_path} #{pane_id}'" Enter
+Sleep 500ms
+
+# kubecom-input: tmux prefix
+Ctrl+B
+Type@1ms ":set -g status-left '   #[fg=cyan,bold]Welcome to kubecom!' ; run-shell 'castrec mark #{q:status-left}'" Enter
 Show
 
 # ---------------------------------------------------------------- launch -----
@@ -85,12 +97,13 @@ Sleep 1s
 Hide
 # kubecom-input: tmux prefix
 Ctrl+B
-Type@1ms ":set -g status-left '   #[fg=cyan,bold]The command palette is your central hub for navigation'" Enter
+Type@1ms ":set -g status-left '   #[fg=cyan,bold]The command palette is your central hub for navigation' ; run-shell 'castrec mark #{q:status-left}'" Enter
 Show
 
 # `:` is the command palette — one place you type what you want to do. The verb and
 # its argument are one line in one box (PAL-03a): the tour types the verb, Enters to
-# commit it, then types the kind into the same box — `:` → "resource" → Pods.
+# commit it, and the kinds open in navigation mode (D272), so `/` filters them on the
+# same line — `:resource pods` → Pods.
 # kubecom-action: app.palette
 Type ":"
 Sleep 500ms
@@ -100,6 +113,9 @@ Sleep 500ms
 # kubecom-action: nav.drillIn
 Enter
 Sleep 500ms
+# kubecom-action: app.filter
+Type "/"
+Sleep 300ms
 # kubecom-input: narrow the palette's resource argument to Pods
 Type "pods"
 Sleep 500ms
@@ -111,31 +127,27 @@ Sleep 3s
 Hide
 # kubecom-input: tmux prefix
 Ctrl+B
-Type@1ms ":set -g status-left '   #[fg=cyan,bold]Filter live resources as you type'" Enter
+Type@1ms ":set -g status-left '   #[fg=cyan,bold]Filter live resources as you type' ; run-shell 'castrec mark #{q:status-left}'" Enter
 Show
 
 # The table is a live watch, not a snapshot. `/` narrows it as you type; Enter
-# keeps the narrowing and hands the keys back to navigation.
+# keeps the narrowing and hands the keys back to navigation, the one pod left
+# selected (Enter on a row would open its actions, D271).
 # kubecom-action: app.filter
 Type "/"
 Sleep 500ms
-# kubecom-input: filter text
-Type "shop"
+# kubecom-input: TUNE — filter text, a pod that logs
+Type "logspam"
 Sleep 500ms
 # kubecom-input: enter
 Enter
-Sleep 1s
-# kubecom-action: nav.down
-Down
-# kubecom-input: enter
-Enter
-Sleep 1s
+Sleep 1500ms
 
 # ------------------------------------------------------------------ logs -----
 Hide
 # kubecom-input: tmux prefix
 Ctrl+B
-Type@1ms ":set -g status-left '   #[fg=cyan,bold]Press L to tail logs for the selected pod'" Enter
+Type@1ms ":set -g status-left '   #[fg=cyan,bold]Press L to tail logs for the selected pod' ; run-shell 'castrec mark #{q:status-left}'" Enter
 Show
 
 # `L` gives logs the whole screen and tails the container live.
@@ -145,7 +157,7 @@ Sleep 5s
 Hide
 # kubecom-input: tmux prefix
 Ctrl+B
-Type@1ms ":set -g status-left '   #[fg=cyan,bold]Grep logs instantly without interrupting the stream'" Enter
+Type@1ms ":set -g status-left '   #[fg=cyan,bold]Grep logs instantly without interrupting the stream' ; run-shell 'castrec mark #{q:status-left}'" Enter
 Show
 
 # `/` greps the stream *while it keeps following* — nothing is re-fetched.
@@ -165,7 +177,7 @@ Sleep 1500ms
 Hide
 # kubecom-input: tmux prefix
 Ctrl+B
-Type@1ms ":set -g status-left '   #[fg=cyan,bold]Press d to describe the selected resource'" Enter
+Type@1ms ":set -g status-left '   #[fg=cyan,bold]Press d to describe the selected resource' ; run-shell 'castrec mark #{q:status-left}'" Enter
 Show
 
 # `d` describes the selected row in the shared centered viewer; it scrolls like
@@ -184,7 +196,7 @@ Sleep 1s
 Hide
 # kubecom-input: tmux prefix
 Ctrl+B
-Type@1ms ":set -g status-left '   #[fg=cyan,bold]Ctrl+F searches across all resources in the cluster'" Enter
+Type@1ms ":set -g status-left '   #[fg=cyan,bold]Ctrl+F searches across all resources in the cluster' ; run-shell 'castrec mark #{q:status-left}'" Enter
 Show
 
 # Ctrl+F searches across kinds at once — Kind, namespace, name — ranked, best
@@ -194,7 +206,7 @@ Ctrl+F
 Sleep 1500ms
 # kubecom-input: the same string the filter step already matched, so the search
 # cannot demo zero results — the cluster-wide pass must find the pod on screen
-Type "shop"
+Type "logspam"
 Sleep 4s
 # kubecom-action: nav.back
 Escape
@@ -207,7 +219,7 @@ Sleep 1s
 Hide
 # kubecom-input: tmux prefix
 Ctrl+B
-Type@1ms ":set -g status-left '   #[fg=cyan,bold]Press T to preview the themes'" Enter
+Type@1ms ":set -g status-left '   #[fg=cyan,bold]Press T to preview the themes' ; run-shell 'castrec mark #{q:status-left}'" Enter
 Show
 
 # `T` opens the palette on its `:theme ` stage. Moving the cursor previews each
@@ -230,7 +242,7 @@ Sleep 1s
 Hide
 # kubecom-input: tmux prefix
 Ctrl+B
-Type@1ms ":set -g status-left '   #[fg=cyan,bold]Press ? for the full keymap'" Enter
+Type@1ms ":set -g status-left '   #[fg=cyan,bold]Press ? for the full keymap' ; run-shell 'castrec mark #{q:status-left}'" Enter
 Show
 
 # `?` overlays the complete keymap — every action, the vim key and its classic
@@ -246,7 +258,7 @@ Sleep 1s
 Hide
 # kubecom-input: tmux prefix
 Ctrl+B
-Type@1ms ":set -g status-left '   #[fg=cyan,bold]Thanks for watching'" Enter
+Type@1ms ":set -g status-left '   #[fg=cyan,bold]Thanks for watching' ; run-shell 'castrec mark #{q:status-left}'" Enter
 Show
 
 # kubecom-action: app.quit
@@ -254,5 +266,10 @@ Type "q"
 Sleep 2s
 
 Hide
+# Closing the pipe ends the cast: castrec writes docs/screencast.cast.
+# kubecom-input: tmux prefix
+Ctrl+B
+Type@1ms ":pipe-pane" Enter
+Sleep 500ms
 Type@1ms "./docs/screencast/teardown.sh" Enter
 Sleep 1s
