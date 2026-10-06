@@ -7,7 +7,7 @@ check: build test vet lint
 
 # Release build metadata (follows engram/margin). A build has a name and an
 # identity: the name is CalVer — `YY.MM.DD` for a stable release (the tag's own
-# name), `YY.MM.DD-dev.<sha7>` for a build of v1 — and the identity is the full
+# name), `YY.MM.DD-dev.<sha7>` for a build of main — and the identity is the full
 # commit. Channel is stamped only by `dist`, so every local build is on no
 # channel and `kubecom update` sends it to the dev channel. The launcher rides
 # the same version as the seed the package ships (D295): it is rebuilt and
@@ -53,11 +53,11 @@ dist:
 # Cut a release: tag HEAD with today's date in UTC, YY.MM.DD, and push it. The
 # tag is the whole act — the release workflow builds it, publishes it to the
 # stable channel, and makes the GitHub release. Refuses a dirty tree, a HEAD not
-# on origin/v1, and a day already released (a day has one release).
+# on origin/main, and a day already released (a day has one release).
 release:
 	@test -z "$(MODIFIED)" || { echo "make release: the tree has uncommitted changes" >&2; exit 1; }
 	@git fetch -q --tags origin
-	@git merge-base --is-ancestor HEAD origin/v1 || { echo "make release: HEAD is not on origin/v1" >&2; exit 1; }
+	@git merge-base --is-ancestor HEAD origin/main || { echo "make release: HEAD is not on origin/main" >&2; exit 1; }
 	@other=$$(git tag --points-at HEAD --list '[0-9][0-9].[0-9][0-9].[0-9][0-9]'); \
 	test -z "$$other" || { echo "make release: $(SHORT) is already released as $$other" >&2; exit 1; }
 	@set -e; tag=$$(date -u +%y.%m.%d); \

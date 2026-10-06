@@ -23,7 +23,7 @@ git show <commit> -- vault/feedback/<file>.md         # your words, verbatim
 ## How to submit (human)
 
 Add a markdown file named **`YYYY-MM-DD-short-slug.md`** (any name but `README.md`;
-the date prefix keeps them sortable/oldest-first). Commit and push it to `v1` — or
+the date prefix keeps them sortable/oldest-first). Commit and push it to `main` — or
 just drop it and let the next leg pick it up. Format is free-form: a title
 plus a few optional fields, then prose. Nothing is mandatory except that
 it says what you want.

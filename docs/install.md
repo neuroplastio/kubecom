@@ -9,7 +9,7 @@ page is the full set: what each path gives you, and what is still waiting on the
 
 **Where the release stands.** The release model changed on **2026-10-06**: kubecom
 now publishes **update channels** on `pkg.neuroplast.io/kubecom` — `dev` from
-every push to `v1`, `stable` from a tag named for its day (`YY.MM.DD`) — and a
+every push to `main`, `stable` from a tag named for its day (`YY.MM.DD`) — and a
 package installs the thin **launcher** `kubecom`, which runs the complete binary
 from `~/.local/kubecom` and updates it with `kubecom update`. The older
 `v1.0.0-rc.1` goreleaser artifacts (archives, the Homebrew cask, the AUR package)
@@ -22,7 +22,7 @@ the launcher model (board ENGRAM-01…03); until then, prefer a channel build or
 Installs into your own home, with no package manager:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/neuroplastio/kubecom/v1/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/neuroplastio/kubecom/main/install.sh | sh
 ```
 
 It verifies the release's signed manifest against the release key pinned in the
@@ -86,10 +86,10 @@ ldflags and nothing else sets them. The binary is otherwise identical.
 
 ## From a local checkout
 
-To build the branch itself — the tip of `v1`, ahead of the rc:
+To build the branch itself — the tip of `main`, ahead of the rc:
 
 ```bash
-git clone -b v1 https://github.com/neuroplastio/kubecom
+git clone -b main https://github.com/neuroplastio/kubecom
 cd kubecom
 go install ./cmd/kubecom      # installs kubecom to $(go env GOPATH)/bin
 ```

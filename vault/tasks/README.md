@@ -15,7 +15,7 @@ can see what's in flight and pick up work without external context.
 
 1. **Pick** the top unblocked item from Backlog (respect milestone order).
 2. **Claim** it: move to In Progress, add `@agent-id` and `YYYY-MM-DD`.
-3. **Work** on `v1` in small commits; reference the task id in commit messages.
+3. **Work** on `main` in small commits; reference the task id in commit messages.
 4. **Capture** any durable learning in [`../knowledge/`](../knowledge/).
 5. **Close**: **drop** the item from the board — completed items are not kept on
    the board (D291); the journal bullet, the commit and the decision log are its

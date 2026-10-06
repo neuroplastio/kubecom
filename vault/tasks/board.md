@@ -9,17 +9,7 @@ _Last updated: 2026-10-06 — vault cleanup (D291): completed items dropped, jou
 
 ## Blocked
 
-- [ ] **M5-11** Make the rewrite the default branch (`v1` → `main`)
-      status: blocked | owner: — | added: 2026-07-30
-      notes: Blocked on human task `2026-07-30-first-release-tag` — the maintainer deferred the
-      tag on 2026-08-09 ("a bit too early for that"), so the block stands; renaming the branch before
-      a release exists would retarget every clone and PR for a tree nobody can install yet, and
-      the rename also dissolves the `@v1` collision the tag is what actually fixes. (The release-
-      namespaces blocker that also gated M5-11 was resolved 2026-08-09 — D253/D254 folded in.)
-      The agent share is preparation: what to rename, `master` kept as the permanent 2020 reference
-      (D14, do *not* delete), the workflow `branches:` lists (both already name `main`) and the
-      README/vault links that say `v1`, and neuroplast.io's URL for the screencast cast (D290 pt 3). The act itself is a GitHub admin setting — a human's.
-      → milestone: M5
+_(none)_
 
 ## Backlog
 

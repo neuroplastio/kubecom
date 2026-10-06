@@ -13,12 +13,11 @@ under version control, and is discoverable without external context.
 
 ## Branch model
 
-- **`master`** — the original 2020 codebase. Left untouched for now.
-- **`v1`** — the rewrite branch. **All rewrite work happens here.** This vault
-  lives on `v1`.
-- Final destination for the finished rewrite is a `main` branch (to be created
-  when the rewrite is ready to become the default). Until then, `v1` is the
-  active line of development.
+- **`main`** — the rewrite branch, and the repository's default branch since
+  M5-11 (2026-10-07). **All rewrite work happens here**; this vault lives on
+  `main`.
+- **`master`** — the original 2020 codebase, kept as the historical reference
+  (D14). Left untouched.
 
 ## Layout
 
@@ -36,7 +35,7 @@ under version control, and is discoverable without external context.
 
 The rewrite runs **autonomously**: agents self-assign work and progress one small
 **leg** at a time via the [`/do-rewrite-leg`](../.claude/skills/do-rewrite-leg/SKILL.md)
-skill, pushing directly to `v1`. A claim on the board is committed and pushed
+skill, pushing directly to `main`. A claim on the board is committed and pushed
 **before** implementation so it acts as a lock (D16). A human reviews
 periodically via this vault and the journal. See [`../CLAUDE.md`](../CLAUDE.md) for the full operating model.
 
@@ -50,7 +49,7 @@ periodically via this vault and the journal. See [`../CLAUDE.md`](../CLAUDE.md) 
    preempts the board; address it and delete the file (D69).
 3. **Pick work** — take the next item from `tasks/board.md` (or the milestone's
    checklist). Move it to In Progress with your agent id and a timestamp.
-4. **Do the work** on `v1`, in small, reviewable commits.
+4. **Do the work** on `main`, in small, reviewable commits.
 5. **Capture knowledge** — anything non-obvious you discover (about the old code,
    the K8s API, a library quirk, a decision) goes into `knowledge/` immediately,
    so the next agent (or a cold-started you) doesn't re-derive it.

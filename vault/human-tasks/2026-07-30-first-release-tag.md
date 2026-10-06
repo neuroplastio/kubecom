@@ -194,3 +194,12 @@ goals Definition of Done reworded to the channel/launcher model (ENGRAM-03), the
 resolved GitHub issues closed, and M5-11 (`v1`→`main`). The "install from"
 verification halves are the two packaging tasks (AUR done and published;
 Homebrew ENGRAM-02).
+
+## Update (2026-10-07) — the release is cut and `main` is the default; the block is gone
+
+Stable `26.10.06` was tagged and published (channels + GitHub release), and M5-11
+was done: `v1` → `main`, now the repository's default branch. This task no longer
+blocks anything. What remains from step 3 is agent work on the board: close the
+resolved GitHub issues and finish the docs/M5 wording (ENGRAM-03), plus the
+install-from checks (AUR done; Homebrew is ENGRAM-02). Close this task when the
+issues are closed.

@@ -6,9 +6,9 @@ in-cluster deployment and **no `kubectl` binary required**.
 
 ![kubecom — browse, filter, logs, describe](docs/screencast.gif)
 
-> ### 🚧 `v1` is a ground-up rewrite in progress
+> ### 🚧 `main` is a ground-up rewrite in progress
 >
-> This branch (`v1`) rebuilds the 2020 codebase from scratch on a modern Go stack
+> This branch (`main`) rebuilds the 2020 codebase from scratch on a modern Go stack
 > (**Bubble Tea + client-go**), fixing the old data-race/focus/redraw bug class by
 > construction and dropping the hard `kubectl` dependency. The original 2020 code
 > lives on [`master`](https://github.com/neuroplastio/kubecom/tree/master).
@@ -222,7 +222,7 @@ in `~/.local/kubecom` — see [`docs/install.md`](docs/install.md). The
 No root, no package manager — installs the launcher and a seed into your home:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/neuroplastio/kubecom/v1/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/neuroplastio/kubecom/main/install.sh | sh
 ```
 
 The current release is the candidate **`v1.0.0-rc.1`**. Download the archive for
@@ -237,7 +237,7 @@ Name the version explicitly: `@latest` skips pre-releases, and picks kubecom up
 only once stable `v1.0.0` is tagged. To build the branch instead:
 
 ```bash
-git clone -b v1 https://github.com/neuroplastio/kubecom
+git clone -b main https://github.com/neuroplastio/kubecom
 cd kubecom
 go install ./cmd/kubecom      # installs kubecom to $(go env GOPATH)/bin
 ```

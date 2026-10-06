@@ -13,8 +13,8 @@ subagent context instead (D21).
 
 ## 0. Prime the environment (fresh cloud checkouts start on `master`)
 
-- `git fetch origin v1 && git checkout v1 && git pull --rebase origin v1`.
-  All process files (CLAUDE.md, skills, vault) live only on `v1`.
+- `git fetch origin main && git checkout main && git pull --rebase origin main`.
+  All process files (CLAUDE.md, skills, vault) live only on `main`.
 - Set the repo-local git identity — cloud checkouts default to a Claude
   identity, but commits must be authored by the maintainer (per CLAUDE.md):
   `git config user.name "Anatoly Rugalev" && git config user.email "anatoly.rugalev@gmail.com"`.
@@ -40,16 +40,16 @@ subagent context instead (D21).
 ## Loop
 
 1. Spawn **one** subagent (`general-purpose`, **synchronously** — never in
-   parallel: legs claim tasks and push to `v1`, and concurrent legs would
+   parallel: legs claim tasks and push to `main`, and concurrent legs would
    collide) with **`model: "opus"`** — the routine session runs a cheaper model
    for orchestration, but legs always execute on Opus — and this prompt:
 
    > Read `.claude/skills/do-rewrite-leg/SKILL.md` and `CLAUDE.md` in the repo
    > and follow the skill exactly: one leg, then stop. (Read the file by path —
    > do not rely on `/do-rewrite-leg` being a registered slash command; the
-   > session may have initialized before `v1` was checked out.) End your final
+   > session may have initialized before `main` was checked out.) End your final
    > message with a report: leg id · what was done (1–2 lines) · verify result
-   > (`make check`) · pushed to v1 (y/n + commit subject) · suggested next leg
+   > (`make check`) · pushed to main (y/n + commit subject) · suggested next leg
    > · any blocker.
 
 2. When it returns, check the report against the budgets above.

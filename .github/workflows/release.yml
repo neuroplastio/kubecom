@@ -2,15 +2,15 @@
 # signed by the release key, which `kubecom update` installs (D18), and beside
 # each the thin launcher a package installs as kubecom (D20).
 #
-#   • dev — every push to v1 that passes the gate, named YY.MM.DD-dev.<sha7>
+#   • dev — every push to main that passes the gate, named YY.MM.DD-dev.<sha7>
 #     (the commit's date, UTC).
-#   • stable — every tag named for its day, YY.MM.DD, on a commit of v1 (D21).
+#   • stable — every tag named for its day, YY.MM.DD, on a commit of main (D21).
 #     `make release` pushes one. The tag is the release's name, and it gets a
 #     GitHub release with the same files.
 #
 # Jobs:
 #
-#   • check — the reusable ci.yml `make check` gate, on v1 pushes and tags.
+#   • check — the reusable ci.yml `make check` gate, on main pushes and tags.
 #   • build — `make dist`, the eight bare binaries, as a job artifact.
 #   • release — on a tag: the GitHub release, a mirror of the channel's files.
 #   • publish — after check and build (and release, on a tag): `engram publish`
@@ -20,14 +20,14 @@
 #
 # There are no secrets. The publish job signs in to AWS with GitHub's OIDC
 # token, as a role that may write under kubecom/ in the bucket and sign with the
-# release key, and nothing else (neuroplastio/infra; the role trusts v1 and
+# release key, and nothing else (neuroplastio/infra; the role trusts main and
 # day-named tags). The role, bucket, key and distribution are not secret, so they
 # are written here.
 name: Release
 
 on:
   push:
-    branches: [v1]
+    branches: [main]
     tags: ['[0-9][0-9].[0-9][0-9].[0-9][0-9]']
 
 permissions:
@@ -60,7 +60,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # All of v1, to tell whether a tag's commit is on it.
+          # All of main, to tell whether a tag's commit is on it.
           fetch-depth: 0
 
       - uses: actions/setup-go@v5
@@ -69,7 +69,7 @@ jobs:
           check-latest: true
 
       # A release is a day — 26.02.30 matches the trigger's pattern and is not
-      # one — cut from v1, from a commit no other release is.
+      # one — cut from main, from a commit no other release is.
       - name: Check the tag
         if: ${{ github.ref_type == 'tag' }}
         run: |
@@ -78,8 +78,8 @@ jobs:
             echo "::error::$tag is not a day: a release is named YY.MM.DD"
             exit 1
           fi
-          if ! git merge-base --is-ancestor HEAD origin/v1; then
-            echo "::error::$tag is on $(git rev-parse --short=7 HEAD), which is not on v1"
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::$tag is on $(git rev-parse --short=7 HEAD), which is not on main"
             exit 1
           fi
           other="$(git tag --points-at HEAD --list '[0-9][0-9].[0-9][0-9].[0-9][0-9]' | grep -vx "$tag" || true)"
@@ -132,7 +132,7 @@ jobs:
           name: kubecom-${{ github.sha }}
           path: dist/
 
-      # What changed since the previous release on v1, the chores left out.
+      # What changed since the previous release on main, the chores left out.
       - name: Write the notes
         run: |
           tag="$GITHUB_REF_NAME"
@@ -272,3 +272,52 @@ jobs:
           build="$PKG_URL/kubecom/stable/builds/$GITHUB_SHA"
           curl -fsS -O "$build/manifest" -O "$build/manifest.sig"
           gh release upload "$GITHUB_REF_NAME" manifest manifest.sig --clobber
+
+  # The AUR package (the launcher plus a seed build, D295): rendered from the
+  # release's linux binaries, built with makepkg exactly as a user would, and
+  # pushed by packaging/aur/publish.sh. makepkg refuses to run as root and needs
+  # base-devel, so the job runs in an Arch container as a non-root user. The one
+  # credential is AUR_SSH_PRIVATE_KEY; without it the job skips rather than
+  # fails, the way every publisher here degrades.
+  aur:
+    name: publish kubecom-bin to the AUR
+    if: ${{ github.ref_type == 'tag' }}
+    needs: [publish]
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: pacman -Syu --noconfirm --needed git openssh curl libarchive zstd
+
+      - name: Publish
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          RELEASE: ${{ github.ref_name }}
+        run: |
+          set -eu
+          if [ -z "${AUR_SSH_PRIVATE_KEY:-}" ]; then
+            echo "::notice::AUR_SSH_PRIVATE_KEY is not set; skipping the AUR publish"
+            exit 0
+          fi
+          dir=/tmp/release
+          mkdir -p "$dir"
+          for f in kubecom-launcher_linux_amd64 kubecom-launcher_linux_arm64 \
+                   kubecom_linux_amd64 kubecom_linux_arm64; do
+            curl -fsSL "https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE/$f" -o "$dir/$f"
+          done
+
+          # makepkg refuses to run as root; the publish is its whole build.
+          id -u builder >/dev/null 2>&1 || useradd -m builder
+          install -d -m700 -o builder -g builder /home/builder/.ssh
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > /home/builder/.ssh/aur
+          chmod 600 /home/builder/.ssh/aur
+          chown builder:builder /home/builder/.ssh/aur
+          chown -R builder:builder "$dir"
+          ssh-keyscan -t ed25519 aur.archlinux.org > /home/builder/.ssh/known_hosts 2>/dev/null || true
+          chown builder:builder /home/builder/.ssh/known_hosts
+
+          su builder -s /bin/sh -c "cd '$GITHUB_WORKSPACE' && \
+            GIT_SSH_COMMAND='ssh -i /home/builder/.ssh/aur -o IdentitiesOnly=yes -o UserKnownHostsFile=/home/builder/.ssh/known_hosts' \
+            packaging/aur/publish.sh '$RELEASE' '$dir' --push"

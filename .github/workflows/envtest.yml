@@ -17,9 +17,9 @@ name: envtest
 
 on:
   push:
-    branches: [v1, main]
+    branches: [main]
   pull_request:
-    branches: [v1, main]
+    branches: [main]
   # Lets a human re-run the suite on demand (a control-plane download is the one
   # step here that can fail for reasons unrelated to the code).
   workflow_dispatch:

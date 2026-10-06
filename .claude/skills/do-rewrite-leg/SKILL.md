@@ -1,6 +1,6 @@
 ---
 name: do-rewrite-leg
-description: Execute exactly one small "leg" of the kubecom rewrite autonomously — orient from the vault, pick and claim the next task, implement it, keep the tree green, record decisions/knowledge, update the journal and board, then commit and push to v1. Use when driving the rewrite forward with no human supervision (directly, via /loop, or a scheduled agent).
+description: Execute exactly one small "leg" of the kubecom rewrite autonomously — orient from the vault, pick and claim the next task, implement it, keep the tree green, record decisions/knowledge, update the journal and board, then commit and push to main. Use when driving the rewrite forward with no human supervision (directly, via /loop, or a scheduled agent).
 ---
 
 # Do one rewrite leg
@@ -14,8 +14,8 @@ if not already in context. Follow these steps in order.
 
 ## 1. Orient
 
-- `git rev-parse --abbrev-ref HEAD` → must be `v1`. If not, `git checkout v1`.
-- `git pull --rebase origin v1` to get others' work. Resolve any trivial rebase
+- `git rev-parse --abbrev-ref HEAD` → must be `main`. If not, `git checkout main`.
+- `git pull --rebase origin main` to get others' work. Resolve any trivial rebase
   conflicts; if non-trivial, that becomes your leg (fix the conflict, nothing else).
 - Ensure a clean tree (`git status`). If dirty from an interrupted leg, assess:
   finish or revert it — never build on an unknown dirty state.
@@ -61,7 +61,7 @@ if not already in context. Follow these steps in order.
 - Move the chosen item to **In Progress** in `board.md` with `owner: <your id>` and
   today's date (`YYYY-MM-DD`).
 - **Commit and push the claim immediately** — a board-only commit
-  (`chore(board): claim <leg-id>`), then `git pull --rebase` + `git push origin v1`.
+  (`chore(board): claim <leg-id>`), then `git pull --rebase` + `git push origin main`.
   The pushed claim is the lock that stops a concurrent agent taking the same leg
   (D16). If the rebase reveals someone else claimed it first, pick the next item.
 
@@ -123,7 +123,7 @@ if not already in context. Follow these steps in order.
   referencing the leg id (e.g. `feat(kube): M1-05 table watch → event channel`).
 - End the message with:
   `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`
-- `git pull --rebase origin v1` then `git push origin v1`. If push is rejected,
+- `git pull --rebase origin main` then `git push origin main`. If push is rejected,
   rebase and retry. **Never force-push.**
 
 ## 9. Report & stop
@@ -146,7 +146,7 @@ is the join key (D15):
 ## Guardrails (do not violate)
 
 - One leg, then stop. Do not chain legs in a single invocation.
-- Green or revert; small diffs; push to `v1` every leg.
+- Green or revert; small diffs; push to `main` every leg.
 - Never modify `master` (unless the task explicitly says so); never force-push;
   never rewrite shared history.
 - Never block waiting for human input — decide, record, proceed.

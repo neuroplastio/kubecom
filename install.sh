@@ -6,7 +6,7 @@
 # `kubecom update` then moves the complete binary in the home, outside the
 # package manager.
 #
-#   curl -fsSL https://raw.githubusercontent.com/neuroplastio/kubecom/v1/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/neuroplastio/kubecom/main/install.sh | sh
 #
 # It trusts nothing but the release key pinned below, and uses only tools already
 # on the machine: curl, ssh-keygen, sha256sum (or shasum). Read from the

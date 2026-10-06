@@ -1622,3 +1622,16 @@ the `AUR_SSH_PRIVATE_KEY` repository secret and **skips** when it is absent, the
 way every other publisher here degrades rather than failing a release. The
 build-before-push validation (makepkg against the GitHub release) is unchanged;
 only who invokes it moved. The human-run path still works for a re-publish.
+
+### D298 — The rewrite is `main`, and the default branch (2026-10-07, M5-11)
+
+The maintainer directed the move: `v1` is pushed to `main`, and `main` becomes the
+repository's default branch. `master` stays as the 2020 reference (D14, do not
+delete). The unblock was the first stable release (26.10.06), which the rename
+was waiting for.
+
+1. **All triggers say `main`.** `release.yml` runs the dev publish on pushes to `main` and the stable release on a day tag; `ci.yml`/`envtest.yml` gate `main`; the Makefile's `make release` checks `origin/main`.
+2. **`publish_branches` is empty again** — the infra publisher role trusts `refs/heads/main` for kubecom like every other project; the `v1` override is gone (applied through `neuroplastio/infra`).
+3. **The leg loop, skills, vault branch model and docs say `main`.** An installer or doc URL that named `v1` now names `main`.
+4. **Not deleted:** `v1` may be deleted once nothing points at it; the neuroplast.io screencast cast URL (D290 pt 3) is the remaining external reference to move.
+**Refs:** closes M5-11; supersedes the branch model of D9 (no behavior change, the branch is renamed).

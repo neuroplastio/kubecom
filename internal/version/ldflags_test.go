@@ -107,7 +107,7 @@ func TestReleaseWorkflowPublishesTheChannel(t *testing.T) {
 		t.Errorf("%s still names goreleaser; the release path is `make dist` + engram", releaseWorkflowPath)
 	}
 	for _, want := range []string{
-		"branches: [v1]",
+		"branches: [main]",
 		"[0-9][0-9].[0-9][0-9].[0-9][0-9]",
 		"make dist",
 		"engram publish",

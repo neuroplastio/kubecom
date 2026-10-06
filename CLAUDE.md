@@ -9,18 +9,19 @@ forward, one small **leg** at a time, safely and legibly.
 ## The one thing to know
 
 Work proceeds in **legs**: small, self-contained units that leave the tree green,
-are recorded, and are pushed to `v1`. Run one leg with the **`/do-rewrite-leg`**
+are recorded, and are pushed to `main`. Run one leg with the **`/do-rewrite-leg`**
 skill. Each invocation does exactly one leg and stops so progress stays reviewable.
 Scheduled routines invoke **`/do-rewrite-run`** instead: it batches several legs
 in one run, each in a fresh subagent, within time/leg budgets (D21).
 
 ## Branch model
 
-- **`master`** — original 2020 code + an announcement note. **Never modify** it
-  except when a task explicitly says so.
-- **`v1`** — the rewrite. **All work happens here.** Direct-push to `v1` (no PRs
-  between agents). Never force-push. Never rewrite pushed history.
-- A `main` branch becomes the default when the rewrite is ready (a late M5 step).
+- **`main`** — the rewrite, and the repository's default branch since M5-11
+  (2026-10-07; it was `v1` before). **All work happens here.** Direct-push to
+  `main` (no PRs between agents). Never force-push. Never rewrite pushed history.
+- **`master`** — the original 2020 code + an announcement note, kept as the
+  historical reference (D14). **Never modify** it except when a task explicitly
+  says so.
 
 ## Where everything lives (read before working)
 
@@ -40,7 +41,7 @@ in one run, each in a fresh subagent, within time/leg budgets (D21).
 
 ## The leg loop (what `/do-rewrite-leg` does)
 
-1. **Orient** — pull latest `v1`; read goals, the active milestone, board, and the
+1. **Orient** — pull latest `main`; read goals, the active milestone, board, and the
    last few journal entries. **Then check [`vault/feedback/`](vault/feedback/) and
    [`vault/human-tasks/`](vault/human-tasks/).**
 2. **Pick** the leg, in this precedence:
@@ -75,7 +76,7 @@ in one run, each in a fresh subagent, within time/leg budgets (D21).
    bullet are one line each, never a per-leg narrative (D67/D102). The board holds
    open work only: completed items are dropped, not indexed, and `make check`
    fails if a `- [x]` reappears (`internal/vault`, D291).
-8. **Commit + push** to `v1` with a clear message. Stop; report the next suggested leg.
+8. **Commit + push** to `main` with a clear message. Stop; report the next suggested leg.
 
 ## Decision authority
 
@@ -98,7 +99,7 @@ You decide everything. There is no one to ask. Therefore:
 - **Green or revert.** Never push a leg that doesn't build and pass tests.
 - **Small legs.** One logical change; keep diffs reviewable (roughly ≤ ~300 lines).
   A compiling stub + tests beats a large half-wired change.
-- **Push to `v1` every leg.** `git pull --rebase` before pushing; if push is
+- **Push to `main` every leg.** `git pull --rebase` before pushing; if push is
   rejected, rebase and retry. Keep legs small to minimize conflicts.
 - **Never touch `master`** unless the task says so; **never force-push**; never
   rewrite shared history.

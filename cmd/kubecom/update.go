@@ -16,7 +16,7 @@ func newUpdateCmd(run func(ctx context.Context, out io.Writer, commit string) er
 		Use:   "update [commit]",
 		Short: "Replace this kubecom with the newest build from its release channel",
 		Long: `kubecom update fetches the newest build of kubecom from this kubecom's
-channel on pkg.neuroplast.io (stable for a release, dev for a build of v1),
+channel on pkg.neuroplast.io (stable for a release, dev for a build of main),
 checks it against the release key built into this kubecom (the signature over
 the build's manifest, then the binary's sha256), and puts it in place of the
 kubecom you ran — following symlinks to the real file, written beside it and
