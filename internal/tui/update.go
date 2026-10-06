@@ -25,7 +25,7 @@ import (
 // progress during the suspend; the callback reports the outcome on the status
 // bar once bubbletea has reclaimed the screen.
 func (m *Model) runUpdate() (tea.Model, tea.Cmd) {
-	return m, m.suspend(updateCommand{}, func(err error) tea.Msg { return updateDoneMsg{err: err} })
+	return m, m.suspend(&updateCommand{}, func(err error) tea.Msg { return updateDoneMsg{err: err} })
 }
 
 // updateDoneMsg carries the outcome of one update once tea.Exec resumes the TUI.
@@ -54,16 +54,16 @@ type updateCommand struct {
 	err io.Writer
 }
 
-func (c updateCommand) SetStdin(io.Reader)    {}
-func (c updateCommand) SetStdout(w io.Writer) { c.out = w }
-func (c updateCommand) SetStderr(w io.Writer) { c.err = w }
+func (c *updateCommand) SetStdin(io.Reader)    {}
+func (c *updateCommand) SetStdout(w io.Writer) { c.out = w }
+func (c *updateCommand) SetStderr(w io.Writer) { c.err = w }
 
-func (c updateCommand) Run() error {
+func (c *updateCommand) Run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), update.Timeout)
 	defer cancel()
 	err := update.Self(ctx, c.out, "")
 	if err != nil && c.err != nil {
-		fmt.Fprintf(c.err, "kubecom update: %v\n", err)
+		_, _ = fmt.Fprintf(c.err, "kubecom update: %v\n", err)
 	}
 	return err
 }
