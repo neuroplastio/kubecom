@@ -321,3 +321,30 @@ jobs:
           su builder -s /bin/sh -c "cd '$GITHUB_WORKSPACE' && \
             GIT_SSH_COMMAND='ssh -i /home/builder/.ssh/aur -o IdentitiesOnly=yes -o UserKnownHostsFile=/home/builder/.ssh/known_hosts' \
             packaging/aur/publish.sh '$RELEASE' '$dir' --push"
+
+  # The Homebrew formula (the launcher plus a seed build, D295), rendered from
+  # the release's binaries and pushed to the org tap `neuroplastio/homebrew-tap`.
+  # The tap is a different repository, so this needs HOMEBREW_TAP_TOKEN (a token
+  # that may write to it); without it the job skips, like every publisher here.
+  homebrew:
+    name: publish the Homebrew formula
+    if: ${{ github.ref_type == 'tag' }}
+    needs: [publish]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # All tags, so the release tag resolves to its commit.
+          fetch-depth: 0
+
+      - name: Publish
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          RELEASE: ${{ github.ref_name }}
+        run: |
+          set -eu
+          if [ -z "${HOMEBREW_TAP_TOKEN:-}" ]; then
+            echo "::notice::HOMEBREW_TAP_TOKEN is not set; skipping the Homebrew publish"
+            exit 0
+          fi
+          packaging/homebrew/publish.sh "$RELEASE" --push

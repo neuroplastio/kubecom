@@ -36,9 +36,14 @@ manager.
 kubecom          # browse your current kubeconfig context
 ```
 
-Prefer a package manager? Arch users have **`kubecom-bin`** on the
-[AUR](https://aur.archlinux.org/packages/kubecom-bin); a Homebrew formula is on
-the way. Or build from source:
+Prefer a package manager?
+
+```sh
+brew install neuroplastio/tap/kubecom   # macOS, and Homebrew on Linux
+yay -S kubecom-bin                       # Arch (AUR)
+```
+
+Or build from source:
 
 ```sh
 go install github.com/neuroplastio/kubecom/cmd/kubecom@main

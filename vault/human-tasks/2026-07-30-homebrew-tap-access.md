@@ -115,3 +115,20 @@ The token step is deferred until around the first release, so this task stays **
 but must not be re-surfaced at every orient (D256 pt 4). Re-ask when the tag
 (`2026-07-30-first-release-tag`) is being cut — the cask publish skips itself without
 the secret (D173 pt 2), which remains the correct failure mode until then.
+
+## Update (2026-10-07) — the formula exists; CI needs the token
+
+The packaging is rebuilt for the launcher+seed model (D299):
+`brew install neuroplastio/tap/kubecom` installs the launcher and a seed, the
+wrapper seeds `~/.local/kubecom` on first run, and `kubecom update` moves the
+build in the home. **`Formula/kubecom.rb` is published to `neuroplastio/homebrew-tap`
+for `26.10.07`** (the tap's default branch is `master`).
+
+What is left, and it is the account-level act this task always owned: mint a
+fine-grained token that may write **Contents** to `neuroplastio/homebrew-tap` and
+add it to `neuroplastio/kubecom` → Settings → Secrets → Actions as
+**`HOMEBREW_TAP_TOKEN`** (`TestHomebrewCaskIsInertWithoutItsToken`'s successor: the
+release `homebrew` job skips without it). Until then, update the tap by running
+`packaging/homebrew/publish.sh <tag> --push` with your own credentials. Also verify
+on a Mac that `brew install neuroplastio/tap/kubecom` gives a launchable binary
+(the binary is unsigned; a formula download is not quarantined, but confirm).

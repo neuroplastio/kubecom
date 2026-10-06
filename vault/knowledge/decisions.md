@@ -1635,3 +1635,19 @@ was waiting for.
 3. **The leg loop, skills, vault branch model and docs say `main`.** An installer or doc URL that named `v1` now names `main`.
 4. **Not deleted:** `v1` may be deleted once nothing points at it; the neuroplast.io screencast cast URL (D290 pt 3) is the remaining external reference to move.
 **Refs:** closes M5-11; supersedes the branch model of D9 (no behavior change, the branch is renamed).
+
+### D299 — Homebrew ships the launcher plus a seed, on the org tap (2026-10-07, REL-09)
+
+`brew install neuroplastio/tap/kubecom` installs the same launcher+seed combo the
+AUR package does (D295): the launcher as `bin/kubecom` and a complete build in
+`libexec`, with a small wrapper that **seeds the launcher's home** from that build
+on first run. The AUR can use enlaunch's default seed path (`/usr/lib/<project>`);
+Homebrew's prefix is not `/usr/lib`, so the wrapper writes `~/.local/kubecom` — the
+home the launcher already reads — and leaves an already-updated install alone.
+`packaging/homebrew/{kubecom.rb,publish.sh}` render `Formula/kubecom.rb` from a
+release's eight binaries (version, commit, and each sha256) and push it to
+`neuroplastio/homebrew-tap`; a `homebrew` job in `release.yml` does it on a day tag
+via `HOMEBREW_TAP_TOKEN`, skipping without it. The seed's build directory is named
+for the release commit (40 hex), so enlaunch's home layout and pruning stay
+correct. Published for 26.10.07, the first formula; the tap's default branch is
+`master`.
