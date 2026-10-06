@@ -180,3 +180,17 @@ skip silently without you: `HOMEBREW_TAP_TOKEN` and `AUR_SSH_PRIVATE_KEY`
 Without them the stable tag publishes no cask and no AUR package, and the M5
 criterion "Homebrew/AUR install paths verified" cannot close on the release it
 was written for — a second tag would be needed to distribute.
+
+## Update (2026-10-06) — the first stable release is cut under the new model
+
+The tag the old pipeline was waiting for has happened, but not the old way: the
+goreleaser flow was replaced by engram channels + a launcher (D292/D293), and
+**`26.10.06` was tagged and published on 2026-10-06** — the GitHub release
+carries the eight bare binaries (`kubecom_<os>_<arch>`,
+`kubecom-launcher_<os>_<arch>`) plus `manifest`/`manifest.sig`, and the stable
+channel (`pkg.neuroplast.io/kubecom/stable`) holds it, CDN-verified. Step 3's
+*agent* work is what remains and is on the board: the M5 exit criteria and the
+goals Definition of Done reworded to the channel/launcher model (ENGRAM-03), the
+resolved GitHub issues closed, and M5-11 (`v1`→`main`). The "install from"
+verification halves are the two packaging tasks (AUR done and published;
+Homebrew ENGRAM-02).

@@ -187,3 +187,19 @@ release's** GitHub release. Nothing is published yet. What remains:
 4. **Retire `kube-commander`** (the 2020 package, still on the AUR) — merge or
    delete, and the new PKGBUILD already declares `conflicts=('kubecom'
    'kube-commander')`.
+
+## Update (2026-10-06, later) — `kubecom-bin` is published
+
+Done: the release key was added to the account (`ssh -T` welcomes
+`AnatolyRugalev`), `26.10.06` was tagged, and
+`kubecom-bin 26.10.06-1` is live at
+<https://aur.archlinux.org/packages/kubecom-bin>, installing the launcher as
+`/usr/bin/kubecom`. `AUR_SSH_PRIVATE_KEY` is no longer needed: the release
+workflow does not push to the AUR (a human runs `publish.sh`), so the old
+"secret must be absent so the goreleaser step skips" note is obsolete.
+
+Remaining, and it is the account-level act this task always owned:
+**retire the 2020 `kube-commander`** — merge it into `kubecom-bin` if the AUR
+allows, else request deletion; and say which route in a Result. The new package
+already declares `conflicts=('kubecom' 'kube-commander')`, so the two cannot be
+co-installed.
