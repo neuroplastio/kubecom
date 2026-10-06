@@ -121,8 +121,8 @@ if not already in context. Follow these steps in order.
 
 - Stage everything for this leg. Commit with a clear, conventional message
   referencing the leg id (e.g. `feat(kube): M1-05 table watch → event channel`).
-- End the message with:
-  `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`
+- Commit as the repository's configured identity, `Kubecom Agent
+  <kubecom@neuroplast.io>` — no `Co-Authored-By` trailer.
 - `git pull --rebase origin main` then `git push origin main`. If push is rejected,
   rebase and retry. **Never force-push.**
 

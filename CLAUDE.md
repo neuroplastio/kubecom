@@ -120,8 +120,8 @@ You decide everything. There is no one to ask. Therefore:
 make check          # canonical gate: build + test + vet + lint (D17)
 ```
 
-Git identity for commits: `Anatoly Rugalev <anatoly.rugalev@gmail.com>` (set
-repo-locally). End commit messages with the standard Co-Authored-By trailer.
+Git identity for commits: `Kubecom Agent <kubecom@neuroplast.io>` (set
+repo-locally). No Co-Authored-By trailer.
 
 Start every session by reading [`vault/README.md`](vault/README.md), then run
 `/do-rewrite-leg`.

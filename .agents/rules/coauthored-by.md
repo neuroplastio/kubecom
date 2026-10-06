@@ -1,5 +1,11 @@
-# Git Co-Authored-By Trailer Override
+# Git commit identity
 
-When committing changes or completing rewrite legs, use Antigravity's Co-Authored-By trailer instead of Claude's:
+Commits on this repository are authored and committed by the kubecom agent
+identity:
 
-`Co-Authored-By: Antigravity <agy@google.com>`
+```
+Kubecom Agent <kubecom@neuroplast.io>
+```
+
+It is set repo-locally (`git config user.name` / `user.email`). Do not add a
+`Co-Authored-By` trailer naming another tool — the agent identity is the author.
