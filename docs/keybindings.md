@@ -37,6 +37,7 @@ effective map. Vim keys are listed first, fallbacks second (D10).
 | `app.help` | `?` | Toggle help |
 | `app.quit` | `q` / `ctrl+c` | Quit |
 | `app.palette` | `:` | Command palette |
+| `app.update` | — | Update kubecom |
 
 ## ns
 

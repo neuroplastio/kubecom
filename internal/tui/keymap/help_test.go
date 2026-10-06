@@ -403,13 +403,20 @@ func TestHelpMapFullHelp(t *testing.T) {
 	if len(full) != 16 {
 		t.Fatalf("FullHelp columns = %d; want 16", len(full))
 	}
-	// Total enabled bindings equals the whole registry (all default-bound).
+	// Total enabled bindings equals the whole registry less the palette-only
+	// actions, which have no default key to show.
+	want := 0
+	for _, a := range Actions() {
+		if !PaletteOnly(a) {
+			want++
+		}
+	}
 	total := 0
 	for _, col := range full {
 		total += len(col)
 	}
-	if total != len(Actions()) {
-		t.Errorf("FullHelp total = %d; want %d", total, len(Actions()))
+	if total != want {
+		t.Errorf("FullHelp total = %d; want %d", total, want)
 	}
 	// First column is the nav group, first entry nav.up in registry order.
 	if got := full[0][0].Help().Desc; got != ActionUp.Describe() {

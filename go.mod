@@ -8,6 +8,8 @@ require (
 	charm.land/lipgloss/v2 v2.0.0
 	github.com/charmbracelet/x/ansi v0.11.6
 	github.com/charmbracelet/x/exp/teatest/v2 v2.0.0-20260713092006-0d683c34c74b
+	github.com/neuroplastio/engram v0.0.0-20261004143221-248ec260b8de
+	github.com/neuroplastio/engram/enlaunch v0.0.0-20261004143221-248ec260b8de
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/term v0.21.0
 	k8s.io/api v0.31.4

@@ -1,12 +1,70 @@
 # Canonical verification gate for kubecom (D17). Agents and CI run `make check`;
 # "green" means exactly this passing.
 # (Replaces the legacy Travis/protoc Makefile; pb/ codegen is gone per D3/D14.)
-.PHONY: check build test vet lint test-envtest keys-doc screencast
+.PHONY: check build test vet lint test-envtest keys-doc screencast dist release
 
 check: build test vet lint
 
+# Release build metadata (follows engram/margin). A build has a name and an
+# identity: the name is CalVer — `YY.MM.DD` for a stable release (the tag's own
+# name), `YY.MM.DD-dev.<sha7>` for a build of v1 — and the identity is the full
+# commit. Channel is stamped only by `dist`, so every local build is on no
+# channel and `kubecom update` sends it to the dev channel. The launcher is built
+# without the build's identity, since its bytes are its own version.
+SHORT    := $(shell git rev-parse --short=7 HEAD 2>/dev/null)
+COMMIT   ?= $(shell git rev-parse HEAD 2>/dev/null)
+MODIFIED ?= $(if $(shell git status --porcelain 2>/dev/null),true,)
+RELEASE  ?=
+CHANNEL  ?= $(if $(RELEASE),stable,dev)
+DIST_VERSION = $(or $(RELEASE),$(shell TZ=UTC git show -s --date=format-local:%y.%m.%d --format=%cd HEAD)-$(CHANNEL).$(SHORT))
+
+VERSION_PKG  := github.com/neuroplastio/kubecom/internal/version
+LDFLAGS      := -X $(VERSION_PKG).Commit=$(COMMIT) -X $(VERSION_PKG).modified=$(MODIFIED)
+DIST_LDFLAGS := -s -w -X $(VERSION_PKG).Commit=$(COMMIT) \
+	-X $(VERSION_PKG).Version=$(DIST_VERSION) -X $(VERSION_PKG).Channel=$(CHANNEL) \
+	-X $(VERSION_PKG).Date=$(shell TZ=UTC git show -s --format=%cI HEAD)
+LAUNCHER_FLAGS := -buildvcs=false -ldflags '-s -w -X $(VERSION_PKG).Channel=$(CHANNEL)'
+DIST_PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
+
 build:
 	go build ./...
+
+# The release artifacts (D18/D20): static (CGO off) bare binaries, one per
+# platform — kubecom_<os>_<arch>, what the channel publishes and the launcher
+# installs, and kubecom-launcher_<os>_<arch>, the thin wrapper a package installs
+# as kubecom. Refuses a dirty tree and a RELEASE that is not a tag at HEAD.
+dist:
+	@test -z "$(MODIFIED)" || { echo "make dist: the tree has uncommitted changes" >&2; exit 1; }
+	@test -z "$(RELEASE)" || test "$$(git rev-parse -q --verify 'refs/tags/$(RELEASE)^{commit}')" = "$(COMMIT)" || \
+		{ echo "make dist: RELEASE=$(RELEASE) is not a tag at HEAD" >&2; exit 1; }
+	rm -rf dist
+	@set -e; for p in $(DIST_PLATFORMS); do \
+		os=$${p%/*}; arch=$${p#*/}; \
+		echo "dist/kubecom_$${os}_$${arch}"; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags '$(DIST_LDFLAGS)' \
+			-o dist/kubecom_$${os}_$${arch} ./cmd/kubecom; \
+		echo "dist/kubecom-launcher_$${os}_$${arch}"; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath $(LAUNCHER_FLAGS) \
+			-o dist/kubecom-launcher_$${os}_$${arch} ./cmd/kubecom-launcher; \
+	done
+
+# Cut a release: tag HEAD with today's date in UTC, YY.MM.DD, and push it. The
+# tag is the whole act — the release workflow builds it, publishes it to the
+# stable channel, and makes the GitHub release. Refuses a dirty tree, a HEAD not
+# on origin/v1, and a day already released (a day has one release).
+release:
+	@test -z "$(MODIFIED)" || { echo "make release: the tree has uncommitted changes" >&2; exit 1; }
+	@git fetch -q --tags origin
+	@git merge-base --is-ancestor HEAD origin/v1 || { echo "make release: HEAD is not on origin/v1" >&2; exit 1; }
+	@other=$$(git tag --points-at HEAD --list '[0-9][0-9].[0-9][0-9].[0-9][0-9]'); \
+	test -z "$$other" || { echo "make release: $(SHORT) is already released as $$other" >&2; exit 1; }
+	@set -e; tag=$$(date -u +%y.%m.%d); \
+	if git ls-remote --exit-code --tags origin "refs/tags/$$tag" >/dev/null; then \
+		echo "make release: $$tag is already released; a day has one release" >&2; exit 1; \
+	fi; \
+	git tag -a "$$tag" -m "kubecom $$tag"; \
+	git push origin "refs/tags/$$tag"; \
+	echo "kubecom $$tag is $(SHORT); the release workflow takes it from here"
 
 test:
 	go test ./...

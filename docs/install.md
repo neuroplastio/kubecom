@@ -7,12 +7,15 @@ The [README](../README.md#install) carries the two paths most people want. This
 page is the full set: what each path gives you, and what is still waiting on the
 **stable** release.
 
-**Where the release stands.** The first release candidate, `v1.0.0-rc.1`, was
-published on 2026-08-10 with archives and bare binaries for `linux`/`darwin` ×
-`amd64`/`arm64`. Stable `v1.0.0` has not been tagged. That distinction decides
-every path below: a pre-release is something you must **ask for by name**, so
-`@latest` skips it, Homebrew and the AUR do not carry it, and only the release
-archives and an explicitly-versioned `go install` reach it today.
+**Where the release stands.** The release model changed on **2026-10-06**: kubecom
+now publishes **update channels** on `pkg.neuroplast.io/kubecom` — `dev` from
+every push to `v1`, `stable` from a tag named for its day (`YY.MM.DD`) — and a
+package installs the thin **launcher** `kubecom`, which runs the complete binary
+from `~/.local/kubecom` and updates it with `kubecom update`. The older
+`v1.0.0-rc.1` goreleaser artifacts (archives, the Homebrew cask, the AUR package)
+predate this and are superseded. The per-path sections below are being moved to
+the launcher model (board ENGRAM-01…03); until then, prefer a channel build or
+`go install`.
 
 ## Requirements
 
@@ -108,3 +111,24 @@ kube-commander, since both of its addresses survive with different contents:
 
 The container image was **dropped** on 2026-08-09 (D254) — no image is built or
 published, so there is no container install path to document.
+
+## Updating
+
+A kubecom you installed into a directory you own updates itself:
+
+```sh
+kubecom update            # the newest build of this build's channel
+kubecom update <commit>   # a named build, older ones included
+```
+
+`kubecom update` fetches the newest build of this kubecom's channel, checks the
+signature over the build's manifest and the binary's `sha256` against the release
+key built into this kubecom, and puts it in place of the kubecom you ran — written
+beside it and renamed over it. A build on no channel (a local `go build` or
+`go install`) updates to the **dev** channel. If the directory is not writable by
+you, update refuses and says to install somewhere you own, such as `~/.local/bin`.
+
+A kubecom **a package installed** is a launcher: `kubecom update` installs the new
+build into `~/.local/kubecom` and the next launch runs it, so the launcher itself
+moves only when a package manager replaces it. The same command is in the TUI as
+the `:update` palette entry.

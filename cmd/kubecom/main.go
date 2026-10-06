@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/neuroplastio/kubecom/internal/update"
 	"github.com/neuroplastio/kubecom/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -64,6 +65,7 @@ kubeconfig, context, and namespace are selectable with the flags below. The
 		"append a JSONL trace of every keypress and the action it resolved to (default: off)")
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newKeysCmd())
+	root.AddCommand(newUpdateCmd(update.Self))
 	return root
 }
 

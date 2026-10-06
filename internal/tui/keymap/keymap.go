@@ -89,6 +89,12 @@ const (
 	// not the gesture.
 	ActionTheme       Action = "theme.switch"
 	ActionToggleMouse Action = "mouse.toggle"
+	// ActionUpdate replaces the running kubecom with the newest build from its
+	// release channel (see internal/update): the palette verb for `kubecom
+	// update`, app-global and with no default key — updating is rare and not
+	// worth spending a key. It is the one action that suspends the TUI to fetch
+	// and swap the binary.
+	ActionUpdate Action = "app.update"
 	// ActionSort is the column-header sort gesture (STORY-06b): `S` focuses the
 	// table's column-header row — a small mode where `h`/`l`/`left`/`right` move a
 	// cursor across the columns, `enter` toggles the sort direction on the cursor
@@ -338,6 +344,7 @@ var actionMeta = []struct {
 	{ActionContext, "Switch cluster context"},
 	{ActionTheme, "Switch color theme"},
 	{ActionToggleMouse, "Toggle mouse capture (off = select text to copy)"},
+	{ActionUpdate, "Update kubecom"},
 	{ActionSort, "Sort: focus the column-header row"},
 	{ActionClearSort, "Clear sort (restore order)"},
 	{ActionToggleMenu, "Toggle left menu pane"},
@@ -392,6 +399,18 @@ func Actions() []Action {
 	}
 	return out
 }
+
+// paletteOnlyActions are registered actions with no default key: reached by
+// typing them in the command palette rather than by a binding. Updating is the
+// first — it is rare and it hands the terminal over to fetch and swap the
+// binary, so a bare key would invite an accidental network fetch; `:update`
+// names it deliberately.
+var paletteOnlyActions = map[Action]struct{}{
+	ActionUpdate: {},
+}
+
+// PaletteOnly reports whether a is deliberately unbound by default.
+func PaletteOnly(a Action) bool { _, ok := paletteOnlyActions[a]; return ok }
 
 // defaultBindings is the vim-first default keymap (D10). Tokens are the
 // human-readable syntax of keybindings.md and may be multi-key sequences (`gg`).

@@ -1564,6 +1564,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case execDoneMsg:
 		return m.handleExecDone(msg)
 
+	case updateDoneMsg:
+		return m.handleUpdateDone(msg)
+
 	case editFetchedMsg:
 		return m.handleEditFetched(msg)
 
@@ -4499,6 +4502,12 @@ func (m Model) handleAction(a keymap.Action) (tea.Model, tea.Cmd) {
 		return m, nil // the overlay swallows navigation while it is open.
 	}
 	switch a {
+	case keymap.ActionUpdate:
+		// `:update` (no key): suspend, fetch the newest build from this
+		// build's channel, and put it in place (internal/update). The callback
+		// reports what happened and asks for a restart — a running process
+		// keeps the build it started with.
+		return m.runUpdate()
 	case keymap.ActionTheme, keymap.ActionResources, keymap.ActionNamespace,
 		keymap.ActionContext, keymap.ActionActions:
 		// The shortcut keys converted to pre-typed palette lines (D207): `T` opens the

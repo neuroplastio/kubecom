@@ -79,3 +79,27 @@ and the journal. Everything still open is below.)_
       status: todo | owner: — | added: 2026-08-20
       notes: Agent-found while landing D284 (whose pt 3 is the workaround: composite from `rightPaneX()`, the *rendered* menu width, not `menuPaneWidth`). The fix is to settle one border-box convention across the two panes — the table already renders exactly the width it is sized to — and then `rightPaneX()` may collapse back to `paneWidths()`. Guard it with a body-width assertion (`lipgloss.Width(browseBody()) == m.width`), the one property no current test states.
       → milestone: M5 · knowledge: decisions.md D284
+
+### Release channels & launcher (ENGRAM — D292–D294)
+
+_Published to engram channels (`pkg.neuroplast.io/kubecom/{dev,stable}`); a package installs `kubecom-launcher` as `kubecom`, and the complete binary self-updates with `kubecom update` (D292/D293). The code and pipeline landed 2026-10-06; what is left is packaging and docs._
+
+- [ ] **ENGRAM-01** The AUR package installs the launcher — `kubecom-bin` becomes a PKGBUILD like margin's (`packaging/aur/`), installing `kubecom-launcher` as `/usr/bin/kubecom`, `pkgver` the release whose launcher bytes it last changed in, plus the human-run publish script; retire the goreleaser-generated full-binary package (M5-07's config is gone with goreleaser) and the `kube-commander` old package per human task `2026-07-30-aur-package-access`, whose packaging half this replaces
+      status: todo | owner: — | added: 2026-10-06
+      notes: Margin is the model (`packaging/aur/PKGBUILD` + `publish.sh`); its package is `margin-bin` installed as `margin`, published by a human with makepkg (never CI). `kubecom update` moves the binary the launcher runs; this package moves only when the launcher does.
+      → milestone: M5 · knowledge: decisions.md D292, D293
+
+- [ ] **ENGRAM-02** The Homebrew path installs the launcher — a cask/formula on `neuroplastio/homebrew-tap` that installs `kubecom-launcher` as `kubecom` (no margin precedent: margin has no Homebrew path), with the macOS quarantine postflight the old cask carried; retire the goreleaser `homebrew_casks` config (gone with goreleaser) and update human task `2026-07-30-homebrew-tap-access`, whose packaging half this replaces
+      status: todo | owner: — | added: 2026-10-06
+      notes: The GitHub release of a stable tag carries `kubecom-launcher_darwin_amd64`/`_arm64`, so a hand-maintained formula can point at them the way the old cask did. A package cannot update the launcher in place (it is root-owned); the complete binary in `~/.local/kubecom` is what updates.
+      → milestone: M5 · knowledge: decisions.md D292, D293
+
+- [ ] **ENGRAM-03** Docs: `docs/install.md` and the README document the launcher and `kubecom update`; the M5 exit criteria and the goals Definition of Done that name goreleaser artifacts are reworded to the channel/launcher model, and `docs/usage.md` (DOC-04) covers updating
+      status: todo | owner: — | added: 2026-10-06
+      notes: D68 requires install/usage docs to match the binary in the same change; the launcher + `kubecom update` changed both. The two open human tasks and the M5 "Homebrew/AUR install paths verified" criterion now mean "installed the launcher from", not "installed the archive from".
+      → milestone: M5 · knowledge: decisions.md D292
+
+- [ ] **ENGRAM-04** Infra: apply the publisher/role/trust change (`neuroplastio/infra`) — `kubecom` in `publishers` and `github_repo_ids`, `publish_branches = { kubecom = "v1" }`, `release_tags` gains `kubecom`; until applied the dev publish job cannot assume `github-pkg-publish-kubecom`
+      status: todo | owner: maintainer | added: 2026-10-06
+      notes: The Terraform is edited (variables.tf, github.tf); the apply is a human/infra act. Trust is pinned to `refs/heads/v1` and day-named tags, or the OIDC subject never matches. Recorded as a board item, not a `human-tasks/` file, because it gates only the dev publish, not a milestone.
+      → milestone: M5 · knowledge: decisions.md D292
