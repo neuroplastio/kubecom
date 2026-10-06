@@ -215,8 +215,8 @@ stderr is yours again for as long as that program runs, so it can talk to you no
 
 **The release model changed on 2026-10-06:** kubecom publishes update channels
 (`pkg.neuroplast.io/kubecom`) and a package installs a thin launcher `kubecom`
-that runs the complete binary from `~/.local/kubecom` and updates it with
-`kubecom update` — see [`docs/install.md`](docs/install.md). The
+plus a seed build it runs out of the box; `kubecom update` then updates the copy
+in `~/.local/kubecom` — see [`docs/install.md`](docs/install.md). The
 `v1.0.0-rc.1` archive below is superseded by that model.
 
 The current release is the candidate **`v1.0.0-rc.1`**. Download the archive for

@@ -128,7 +128,13 @@ beside it and renamed over it. A build on no channel (a local `go build` or
 `go install`) updates to the **dev** channel. If the directory is not writable by
 you, update refuses and says to install somewhere you own, such as `~/.local/bin`.
 
-A kubecom **a package installed** is a launcher: `kubecom update` installs the new
-build into `~/.local/kubecom` and the next launch runs it, so the launcher itself
-moves only when a package manager replaces it. The same command is in the TUI as
-the `:update` palette entry.
+A kubecom **a package installed** is a launcher plus a **seed**: the package
+(Arch's `kubecom-bin`, and the Homebrew path to come) installs the launcher as
+`/usr/bin/kubecom` and a complete kubecom binary under `/usr/lib/kubecom`. The
+launcher runs the seed the first time, so a fresh install needs no network and
+keeps running if the channel is down; `kubecom update` then installs a newer
+build into `~/.local/kubecom`, which the launcher prefers from the next launch
+on. The package moves only when a package manager replaces it; the running
+kubecom is yours to update. The same command is in the TUI as the `:update`
+palette entry, and `kubecom --launcher-version` names the packaged shim while
+`kubecom version` names the build actually running.

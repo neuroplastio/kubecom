@@ -6,13 +6,13 @@
 #   packaging/aur/publish.sh <release> <dir> [--push]
 #
 # <release> is a kubecom release tag (26.10.06); <dir> holds that release's
-# kubecom-launcher_linux_amd64 and kubecom-launcher_linux_arm64, the files on
-# its GitHub release. The launcher's bytes are its version, so the package
-# moves only when they do:
+# kubecom-launcher_linux_amd64/_arm64 and kubecom_linux_amd64/_arm64, the files
+# on its GitHub release. The package moves when either file's bytes change (or
+# the PKGBUILD does), and keeps its version otherwise:
 #
 #   • the AUR has no kubecom-bin yet, or other bytes: the package becomes
 #     <release>-1 (or the next pkgrel, when <release> was replaced under its
-#     name with another launcher);
+#     name with other bytes);
 #   • the same bytes: the package keeps its version, and is published again
 #     with the next pkgrel only if packaging/aur/PKGBUILD changed;
 #   • otherwise there is nothing to publish.
@@ -54,28 +54,31 @@ cur_rel=$(srcinfo pkgrel)
 cur_sums="$(srcinfo sha256sums_x86_64) $(srcinfo sha256sums_aarch64)"
 
 sum() { sha256sum "$dir/$1" | cut -d' ' -f1; }
-amd64=$(sum kubecom-launcher_linux_amd64)
-arm64=$(sum kubecom-launcher_linux_arm64)
+l_amd64=$(sum kubecom-launcher_linux_amd64)
+s_amd64=$(sum kubecom_linux_amd64)
+l_arm64=$(sum kubecom-launcher_linux_arm64)
+s_arm64=$(sum kubecom_linux_arm64)
 
 render() {
 	sed -e "s/@PKGVER@/$1/" -e "s/@PKGREL@/$2/" \
-		-e "s/@SHA256_X86_64@/$amd64/" -e "s/@SHA256_AARCH64@/$arm64/" \
+		-e "s/@SHA256_LAUNCHER_X86_64@/$l_amd64/" -e "s/@SHA256_SEED_X86_64@/$s_amd64/" \
+		-e "s/@SHA256_LAUNCHER_AARCH64@/$l_arm64/" -e "s/@SHA256_SEED_AARCH64@/$s_arm64/" \
 		"$here/PKGBUILD"
 }
 
 if [ -z "$cur_ver" ]; then
 	ver=$release rel=1 why="kubecom-bin's first version"
-elif [ "$amd64 $arm64" != "$cur_sums" ]; then
+elif [ "$l_amd64 $s_amd64 $l_arm64 $s_arm64" != "$cur_sums" ]; then
 	if [ "$release" = "$cur_ver" ]; then
-		ver=$cur_ver rel=$((cur_rel + 1)) why="$release was replaced with another launcher"
+		ver=$cur_ver rel=$((cur_rel + 1)) why="the package's files for $release changed"
 	else
-		ver=$release rel=1 why="the launcher changed in kubecom $release"
+		ver=$release rel=1 why="the files changed in kubecom $release"
 	fi
 elif render "$cur_ver" "$cur_rel" | cmp -s - "$work/aur/PKGBUILD"; then
-	echo "kubecom-bin $cur_ver-$cur_rel: kubecom $release has the same launcher; nothing to publish"
+	echo "kubecom-bin $cur_ver-$cur_rel: kubecom $release has the same files; nothing to publish"
 	exit 0
 else
-	ver=$cur_ver rel=$((cur_rel + 1)) why="the PKGBUILD changed; the launcher is still $cur_ver's"
+	ver=$cur_ver rel=$((cur_rel + 1)) why="the PKGBUILD changed; the files are still $cur_ver's"
 fi
 
 render "$ver" "$rel" > "$work/aur/PKGBUILD"
@@ -88,8 +91,10 @@ PKGDEST="$work/out" SRCDEST="$work/src" BUILDDIR="$work/build" \
 	makepkg --force --nodeps --noconfirm >"$work/makepkg.log" 2>&1 ||
 	{ cat "$work/makepkg.log" >&2; exit 1; }
 built=$(ls "$work/out"/*.pkg.tar.*)
-bsdtar -tf "$built" | grep -qx 'usr/bin/kubecom' ||
-	{ echo "$built has no usr/bin/kubecom" >&2; exit 1; }
+for f in usr/bin/kubecom usr/lib/kubecom/bin/kubecom; do
+	bsdtar -tf "$built" | grep -qx "$f" ||
+		{ echo "$built has no $f" >&2; exit 1; }
+done
 
 echo "kubecom-bin $ver-$rel: $why"
 git add --intent-to-add PKGBUILD .SRCINFO

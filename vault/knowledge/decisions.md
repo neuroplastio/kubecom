@@ -1583,3 +1583,16 @@ Extends D292, following margin's D20.
 ### D294 — an action may be palette-only (2026-10-06, REL-03)
 
 `app.update` is registered in the keymap with **no default key**, reachable by typing `:update`; `keymap.PaletteOnly` names the exception and the help/keybindings guards subtract it. Updating is rare and hands the terminal over, so a bare key would invite an accidental fetch. The palette action suspends through `Model.suspend` and runs `internal/update` **in-process** — a child `kubecom update` would not see `ENLAUNCH_HOME`, which enlaunch unsets when read, and would replace the build binary instead of the launcher's home.
+
+### D295 — The package ships a seed, and the launcher rides its version (2026-10-06, REL-05)
+
+Amends D293. A launcher-only package makes every install depend on the channel:
+with `~/.local/kubecom` empty, `pkg.neuroplast.io` down meant nothing to run, and
+`pkgver` named a version the package did not contain (raised by the maintainer:
+"if pkg.neuroplast.io goes down, all binaries just die").
+
+1. **The package carries two files.** The launcher as `/usr/bin/kubecom`, and a complete kubecom binary as a **seed** at `/usr/lib/kubecom/bin/kubecom` — enlaunch's default `Config.Seed`. The launcher runs the seed while the home has no build, so a fresh install works offline and a channel outage stops only *updating*, not running.
+2. **`pkgver` is the seed's version** — the build a user runs out of the box. `kubecom update` installs newer builds into `~/.local/kubecom`, which the launcher prefers from then on; the package version is the floor, self-update the ceiling.
+3. **The launcher is rebuilt and version-stamped with every release**, reusing `DIST_LDFLAGS`, so `kubecom --launcher-version` names the packaged shim while `kubecom version` names the build actually running. It rides the seed's version rather than being byte-stable (supersedes D293 pt 1's "its bytes are its version", which was margin's D22 for a launcher-only package).
+4. **The seed location is package-manager-specific** — `/usr/lib/kubecom` suits the AUR; Homebrew on macOS is not `/usr/lib` — so ENGRAM-02 sets it per package.
+**Refs:** amends D293 (pt 3 supersedes its pt 1).

@@ -76,16 +76,12 @@ func TestDistStampsAllVersionVars(t *testing.T) {
 		}
 	}
 
-	// The launcher carries the channel and nothing of a build's identity: its
-	// bytes are its own version, so a build change must not change them.
-	launcher := strings.ReplaceAll(makeVar(t, "LAUNCHER_FLAGS"), "$(VERSION_PKG)", pkgPath)
-	if !strings.Contains(launcher, "-X "+pkgPath+".Channel=") {
-		t.Errorf("LAUNCHER_FLAGS does not stamp Channel (want %q<channel>)", "-X "+pkgPath+".Channel=")
-	}
-	for _, name := range []string{"Version", "Commit", "Date"} {
-		if strings.Contains(launcher, "."+name+"=") {
-			t.Errorf("LAUNCHER_FLAGS stamps %s — the launcher must not carry the build's identity", name)
-		}
+	// The launcher rides the seed's version (D295): it is stamped with the same
+	// metadata as the binary by reusing DIST_LDFLAGS, so a release's launcher and
+	// seed name one version.
+	launcher := makeVar(t, "LAUNCHER_FLAGS")
+	if !strings.Contains(launcher, "$(DIST_LDFLAGS)") {
+		t.Errorf("LAUNCHER_FLAGS does not reuse DIST_LDFLAGS; the launcher must ride the seed's version (D295): %q", launcher)
 	}
 }
 

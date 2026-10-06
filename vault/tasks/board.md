@@ -86,7 +86,7 @@ _Published to engram channels (`pkg.neuroplast.io/kubecom/{dev,stable}`); a pack
 
 - [ ] **ENGRAM-02** The Homebrew path installs the launcher — a cask/formula on `neuroplastio/homebrew-tap` that installs `kubecom-launcher` as `kubecom` (no margin precedent: margin has no Homebrew path), with the macOS quarantine postflight the old cask carried; retire the goreleaser `homebrew_casks` config (gone with goreleaser) and update human task `2026-07-30-homebrew-tap-access`, whose packaging half this replaces
       status: todo | owner: — | added: 2026-10-06
-      notes: The GitHub release of a stable tag carries `kubecom-launcher_darwin_amd64`/`_arm64`, so a hand-maintained formula can point at them the way the old cask did. A package cannot update the launcher in place (it is root-owned); the complete binary in `~/.local/kubecom` is what updates.
+      notes: The GitHub release of a stable tag carries `kubecom-launcher_darwin_amd64`/`_arm64` and the seed `kubecom_darwin_<arch>`, so a hand-maintained formula can point at them. It must ship the seed too (D295) and set enlaunch's `Seed` to the Homebrew prefix, since `/usr/lib/kubecom` does not suit Homebrew on macOS. A package cannot update the launcher in place (it is root-owned); the copy the user runs lives in `~/.local/kubecom` and updates there.
       → milestone: M5 · knowledge: decisions.md D292, D293
 
 - [ ] **ENGRAM-03** Docs: `docs/install.md` and the README document the launcher and `kubecom update`; the M5 exit criteria and the goals Definition of Done that name goreleaser artifacts are reworded to the channel/launcher model, and `docs/usage.md` (DOC-04) covers updating

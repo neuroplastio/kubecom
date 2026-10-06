@@ -9,8 +9,10 @@ check: build test vet lint
 # identity: the name is CalVer — `YY.MM.DD` for a stable release (the tag's own
 # name), `YY.MM.DD-dev.<sha7>` for a build of v1 — and the identity is the full
 # commit. Channel is stamped only by `dist`, so every local build is on no
-# channel and `kubecom update` sends it to the dev channel. The launcher is built
-# without the build's identity, since its bytes are its own version.
+# channel and `kubecom update` sends it to the dev channel. The launcher rides
+# the same version as the seed the package ships (D295): it is rebuilt and
+# version-stamped with every release, so `kubecom --launcher-version` names the
+# package the user installed, while `kubecom version` names the build it runs.
 SHORT    := $(shell git rev-parse --short=7 HEAD 2>/dev/null)
 COMMIT   ?= $(shell git rev-parse HEAD 2>/dev/null)
 MODIFIED ?= $(if $(shell git status --porcelain 2>/dev/null),true,)
@@ -23,7 +25,7 @@ LDFLAGS      := -X $(VERSION_PKG).Commit=$(COMMIT) -X $(VERSION_PKG).modified=$(
 DIST_LDFLAGS := -s -w -X $(VERSION_PKG).Commit=$(COMMIT) \
 	-X $(VERSION_PKG).Version=$(DIST_VERSION) -X $(VERSION_PKG).Channel=$(CHANNEL) \
 	-X $(VERSION_PKG).Date=$(shell TZ=UTC git show -s --format=%cI HEAD)
-LAUNCHER_FLAGS := -buildvcs=false -ldflags '-s -w -X $(VERSION_PKG).Channel=$(CHANNEL)'
+LAUNCHER_FLAGS := -buildvcs=false -ldflags '$(DIST_LDFLAGS)'
 DIST_PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 
 build:
