@@ -1,104 +1,125 @@
+<div align="center">
+
 # kubecom
 
-A fast, vim-friendly, zero-deploy Kubernetes TUI — *"the kubernetes-dashboard in
-your terminal."* Browse and operate any cluster over SSH, in real time, with no
-in-cluster deployment and **no `kubectl` binary required**.
+**The Kubernetes dashboard in your terminal.**
+
+A fast, vim-friendly, zero-deploy Kubernetes TUI. Browse and operate any cluster
+over SSH, in real time — one static binary, nothing to deploy in the cluster, and
+**no `kubectl` required**.
+
+[![CI](https://github.com/neuroplastio/kubecom/actions/workflows/ci.yml/badge.svg)](https://github.com/neuroplastio/kubecom/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/neuroplastio/kubecom?display_name=release)](https://github.com/neuroplastio/kubecom/releases)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Go](https://img.shields.io/badge/go-1.24-00ADD8.svg)](go.mod)
+[![Platforms](https://img.shields.io/badge/platforms-linux%20%7C%20macOS-lightgrey.svg)](#requirements)
 
 ![kubecom — browse, filter, logs, describe](docs/screencast.gif)
 
-> ### 🚧 `main` is a ground-up rewrite in progress
->
-> This branch (`main`) rebuilds the 2020 codebase from scratch on a modern Go stack
-> (**Bubble Tea + client-go**), fixing the old data-race/focus/redraw bug class by
-> construction and dropping the hard `kubectl` dependency. The original 2020 code
-> lives on [`master`](https://github.com/neuroplastio/kubecom/tree/master).
->
-> **Current status:** feature-complete and dogfooded against real clusters —
-> everything documented below is in the binary, not planned. The first release
-> candidate, **[`v1.0.0-rc.1`](https://github.com/neuroplastio/kubecom/releases/tag/v1.0.0-rc.1)**,
-> is tagged and published with Linux and macOS binaries — install it by name
-> ([Install](#install)). Stable `v1.0.0` has not been cut yet, and the Homebrew
-> and AUR paths start working with it.
->
-> The rewrite is driven autonomously and documents itself in **[`vault/`](vault/)**
-> (goals, plan, live task board, decision log, per-month journal); see
-> [`CLAUDE.md`](CLAUDE.md) for the operating model.
+</div>
+
+## Quick start
+
+No root, no package manager — this installs a thin **launcher** and a self-updating
+build into your home:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/neuroplastio/kubecom/main/install.sh | sh
+```
+
+The installer checks the release against a pinned signing key, puts `kubecom` in
+`~/.local/bin`, and seeds a build in `~/.local/kubecom` so the first run needs no
+network. From then on `kubecom update` keeps it current, outside any package
+manager.
+
+```sh
+kubecom          # browse your current kubeconfig context
+```
+
+Prefer a package manager? Arch users have **`kubecom-bin`** on the
+[AUR](https://aur.archlinux.org/packages/kubecom-bin); a Homebrew formula is on
+the way. Or build from source:
+
+```sh
+go install github.com/neuroplastio/kubecom/cmd/kubecom@main
+```
+
+Every install path is in **[`docs/install.md`](docs/install.md)**.
+
+### Requirements
+
+Linux or macOS (Windows via WSL2), and a kubeconfig. Nothing else — no
+cluster-side component, no `kubectl`.
 
 ## Why kubecom
 
-- **Zero deploy.** A single static binary you run locally or over SSH — nothing to
-  install in the cluster, no HTTP ingress to expose.
+- **Zero deploy.** A single static binary you run locally or over SSH.
 - **Real-time.** Lists are server-side watched and update live; no refresh key.
-- **No `kubectl` binary.** Discovery, list/watch, logs, describe, YAML, and the
-  action set are all in-process via client-go.
+- **In-process.** Discovery, list/watch, logs, describe, YAML and every action run
+  through client-go — not by shelling out.
 - **Vim-first, fully rebindable.** `hjkl`, `gg`/`G`, `/`, `n`/`N` by default, with
   arrows and classic keys as an equivalent fallback — and every key is
-  configurable (no hard-coded keys anywhere).
-- **Approachable.** Simpler and more discoverable than k9s by design.
+  configurable.
+- **Approachable.** Simpler and more discoverable than k9s, by design.
 
-## What kubecom can do
+## What you can do
 
-Every key named below is a **default**: all of them are rebindable under `keys:`
-in the config, the full list is in [`docs/keybindings.md`](docs/keybindings.md),
-and `kubecom keys` prints your effective map. Two keys find the rest: `?` opens
+Every key below is a default — all rebindable under `keys:` in the config. The
+full list is generated in [`docs/keybindings.md`](docs/keybindings.md); `?` opens
 the help overlay, and `:` opens the command palette, which lists every app-wide
-verb and every action available on the selected row.
+verb and every action on the selected row.
 
-### Browsing and navigating
+### Browse
 
-Run bare `kubecom` to open your current kubeconfig context. Lists are **server-side watched** — rows appear, change, and vanish live with no refresh key needed. `hjkl` (or arrows) move within a pane and switch focus between them, `gg`/`G` jump to the ends, and `Ctrl+d`/`Ctrl+u` (half page) or `Space`/`Ctrl+b` (full page) scroll.
+- **Live tables** for any resource, including CRDs, with kubectl-identical columns.
+- **`hjkl`** (or arrows) move and switch panes; `gg`/`G`, half/full-page keys.
+- **`:resource`** switches kind and accepts what you'd type at the kubectl prompt —
+  plural, short name, or API group.
+- **Namespaces and contexts** switch on the fly; kubecom remembers the namespace
+  and resource you last used per context, and comes back to them next time.
+- **Metrics** columns for Pods and Nodes when metrics-server is present — and
+  sortable.
+- **Drill in** to a workload (Deployment, Node, …) to a live watch of its pods; the
+  scope is restored when you return.
+- **Mouse off by default**, so native text selection works; toggle it to click.
 
-Switch resources via the command palette (`:resource`). You can type whatever you call the kind at the kubectl prompt: its plural, short name, or API group. When multiple groups define the same Kind, they are disambiguated by their group. You can hide the left menu to give the table full width.
+### Find
 
-Switch namespaces (`:namespace`) or contexts (`:context`) on the fly. Kubecom remembers the namespace and resource you last used per-context, picking up right where you left off. Switching contexts applies only to the current session.
+- **`/`** filters whichever pane is focused — kinds in the menu, rows in the table.
+- **`H`** narrows the current table to what's unhealthy (CrashLoopBackOff,
+  ImagePullBackOff, Pending, not-ready, a stuck claim).
+- **`U`** sweeps **every kind** for what's broken — pod *and* non-pod (a stuck PVC,
+  an unschedulable workload), streaming as it scans.
+- **Cluster search** (`:search`) across kinds, fuzzy-ranked, with `-l app=web`
+  label selectors, a live preview of the highlighted hit, and one `enter` to open
+  it.
+- **`:` command palette** — app-wide verbs plus the selected row's actions, filtered
+  as you type.
 
-Tables can be sorted by any visible column in either direction, or cleared to restore the server's native order. If your cluster runs metrics-server, Pods and Nodes automatically display live CPU and memory usage, which are also sortable.
+### Inspect
 
-To see the pods belonging to a workload (like a Deployment, StatefulSet, or Node), drill into it to open a live, filtered watch of its pods. This child table supports all the usual actions and updates live. If you leave and come back to a context while a drill-in was open, the drill-in comes back with it — the owner is re-resolved and the scope re-entered, or you land on the plain list with a note if the owner is gone.
+- **Describe** fills the right pane, painted so status, conditions and events are
+  what your eye lands on. **YAML** opens in your real `$EDITOR`; saving applies it
+  with validation and conflict checking. **`E`** lists the object's own events.
+- **Logs** in a dedicated full-screen view: live tail, grep (substring or regex),
+  a `[following]` badge you can trust, wrap, timestamps, the previous container
+  (`-p`), and a visual mode to yank exact lines.
+- **`gr` relations** — the owner that made it, the pods it owns, the node it runs
+  on, and the claims, config maps and secrets it mounts, grouped by direction, each
+  row opening what it names.
+- **Secrets** are masked; reveal or copy a decoded value without it hitting the
+  screen.
 
-Mouse capture is off by default to preserve native text selection. Toggle it on to click menus, select rows, and scroll.
+### Act
 
-### Finding things
-
-Search the open table to quickly highlight and navigate matching rows. Typing narrows the view live; matched text is highlighted. Backspacing past the start of the query cancels the search entirely.
-
-`/` filters whichever pane is focused: with the resource list (left pane) focused it narrows the kinds there — type part of a kind, its plural, or its short name (e.g. `deploy` for Deployments) — and with the table focused it narrows the rows. `esc` clears either filter and brings everything back.
-
-Press `H` to see only the rows that are not healthy — a CrashLoopBackOff or ImagePullBackOff pod, a Pending or unschedulable workload, a stuck claim. It is the "what's broken, filtered" view for the kind you are on: `H` again (or `esc`) brings every row back, and it composes with `/` so you can search inside the broken set.
-
-Press `U` to list every unhealthy resource **across all kinds at once** — pods *and* the non-pod things a pod-first check misses (a stuck PVC or claim, an unschedulable workload of any kind). The list streams in as each kind is scanned, tracks its progress in the header, and each hit can be opened to jump straight to the broken object.
-
-To search the entire cluster instead of just the open table, use the cluster search (`:search`). Matches stream in across kinds in the current namespace. Results are ranked and fuzzy-matched, and can also be narrowed using standard Kubernetes label selectors (`-l app=web`). 
-
-Under the results, a preview describes the highlighted hit — its kind, apiVersion and namespace/name over the object's own printed row (ready, status, age, …) — so you can tell two similarly named objects apart before opening either.
-
-`enter` opens the highlighted result straight from the query line — one press, no commit step. To pick a different hit first, move down the list with the arrow keys: the first movement hands the keyboard to the results, where `j`/`k`, `g`/`G` and the page keys all navigate and `enter` opens whatever is highlighted. `esc` returns to the query with your text and results intact.
-
-For broader queries, you can widen the search to every kind your cluster exposes or to all namespaces. These toggles are temporary and reset on your next search to keep regular queries fast.
-
-The command palette (`:`) is your single entry point for app-wide verbs and actions. It lists available commands and filters as you type. Verbs that require an argument (like picking a resource, namespace, or theme) accept it in the same input box. Pickers open in navigation mode: `j`/`k` move the list, and `/` narrows it as you type.
-
-### Inspecting objects
-
-View an object's **describe** output in a scrollable viewer — it takes over the whole right pane, so a long dump has real room to read while the resources list stays beside it, and it is painted: section headings stand out, and the state-carrying fields (status, state, reason, ready, restart count) plus the Conditions and Events rows are coloured with the same classifier the resource lists use, so a `CrashLoopBackOff` or a failed condition is the first thing you see — or open its **YAML** directly in your `$EDITOR`. Kubecom suspends the UI and restores it when you quit. Saving the file applies the changes back to the cluster with full validation and conflict checking. When something is red, `E` lists that object's own **events** — the `kubectl get events` columns filtered to it — so "why" is one gesture instead of a hunt through describe.
-
-Open the dedicated full-screen **logs view** for any workload. It tails the last 1000 lines live. You can grep the live stream (with substring or regex matching) without pausing the tail, or pause following to explore historical lines. The header paints the `[following]` badge while the stream is live, so a frozen snapshot is unmistakable at a glance, and scrolling back down *past* the newest line rejoins the stream — no separate key to remember. Logs can be wrapped, timestamped, or switched to the previous terminated container instance (`-p`). A visual selection mode lets you yank exact log lines to your system clipboard without terminal wrapping artifacts. The command palette opens over the logs view too, listing the view's own verbs next to the app-wide ones — so the context switcher, the theme picker, and every log toggle are reachable without leaving the stream.
-
-`gr` opens the **relations popup** on any object: the things it is attached to, in one list — the owner that created it (pod → ReplicaSet → Deployment), the pods it owns, the node it runs on, and the claims, config maps and secrets it mounts. Rows are grouped by direction (`↑` what made it, `↓` what it makes, `→` what it references) and each one opens the thing it names, so moving from a pod to its Deployment and back is a gesture rather than a hunt through another kind's list.
-
-Secret contents are masked by default. You can reveal them in place or copy a decoded value straight to your clipboard without putting it on screen.
-
-### Acting on objects
-
-Open the **actions menu** to see what you can do to the selected row. It lists only the actions that apply to that kind. The object they would act on is named in the title so you know what you are targeting.
+The actions menu lists only what applies to the selected row, and names its target.
 
 | Action | Applies to |
 |--------|-----------|
-| Describe | anything you can `get` |
-| Events | anything you can `get` |
+| Describe · Events · Related resources | anything you can `get` |
+| View / Edit YAML | anything you can `get` |
 | Logs | Pod, Deployment, ReplicaSet, StatefulSet, DaemonSet, Job, ReplicationController |
-| Show pods | Deployment, ReplicaSet, StatefulSet, DaemonSet, Job, ReplicationController, Service, Node |
-| Related resources | anything you can `get` |
+| Show pods | those, plus Service and Node |
 | Reveal secret | Secret |
 | Scale | Deployment, ReplicaSet, StatefulSet, ReplicationController |
 | Rollout restart | Deployment, DaemonSet, StatefulSet |
@@ -106,179 +127,86 @@ Open the **actions menu** to see what you can do to the selected row. It lists o
 | Suspend / Resume | CronJob |
 | Port-forward | Pod, Service |
 | Exec shell | Pod |
-| View / Edit YAML | anything you can `get` |
 | Delete | anything you can `delete` |
 
-**Exec shell** drops you into `/bin/sh` inside the container, suspending the UI exactly like the YAML editor does. If `kubectl` is installed, it leverages `kubectl exec -it` directly; otherwise, it falls back to an in-process SPDY path.
+**Exec** suspends into a shell using in-process SPDY (or `kubectl exec` when it is
+installed). **Port-forward** runs in the background with a panel to manage
+forwards.
 
-**Port-forward** asks for a local port (or picks a random one) and runs in the background. A dedicated forwards panel lets you manage and stop active forwards.
+### Make it yours
 
-### Making it yours
+- **Keys** — every action rebindable; `kubecom keys` prints your effective map.
+- **Themes** — fourteen built in, including Catppuccin, Nord, Solarized and
+  gruvbox; kubecom sets your terminal background to match.
+- **Menus and CRDs** — a per-context file adds custom resource types; the rest stay
+  one `/` or `:resource` away, with a `+N custom` row telling you how many are held
+  back. **Pin** the kinds you live in.
+- **Resume** — kubecom opens on Pods, then wherever you left off per context.
 
-- **Keys.** Every action is rebindable in `config.yaml` — there are no hard-coded keys. Run `kubecom keys` to print your effective map.
-- **Themes.** Fourteen are built in (including Catppuccin, Nord, Solarized, and gruvbox). Kubecom sets your terminal's background to match.
-- **The resource menu.** Each context can add its own custom resource types (CRDs) via a per-context YAML file.
-- **Custom resources, on request.** The menu lists the built-in kinds; the CRDs a cluster serves — often hundreds — are not listed until you ask for one. They stay one keystroke away: `/` in the menu finds any of them, and so do `:resource` and cluster search. A trailing `+N custom` row tells you how many are being held back.
-- **Pinned kinds.** Pin any resource kind you work with frequently so it stays in the menu regardless of discovery — that pin is also how a CRD joins the menu for good. Press it again to take it back out.
-- **Where you left off.** Kubecom opens on the Pods table, then on the last namespace and resource you used per context, remembering your place across sessions — and if that pane was a drill-in to an owner's pods, the scope comes back too.
+### When something breaks
 
-### When something doesn't work
+A resource whose LIST fails says **why in the table itself** — RBAC, credentials,
+a missing CRD, an unreachable conversion webhook, the server's own words, and
+whether the fix is yours or the cluster's. An expired credential plugin (an AWS SSO
+session, say) is recognised, and kubecom offers to run the exact login for you
+once. Every error also lands in full in `~/.cache/kubecom/kubecom.log`.
 
-**A resource that won't list** says why in the table itself, not just in the toast:
-open a kind whose LIST the API server refuses and the empty pane carries the reason
-(RBAC denied it, credentials rejected, the CRD is gone, an unreachable conversion
-webhook…), where the fix is — your machine or the cluster — and the server's own
-words underneath. It stays until the list succeeds; kubecom keeps retrying in the
-background, and the rows replace it the moment one comes back.
-
-**An expired credential plugin** gets a second look. When the list fails because the
-`user.exec` plugin in your kubeconfig failed (an expired AWS SSO session is the usual
-one), kubecom runs that plugin once more to capture what it printed — under the UI you
-would never see it — and puts its own words in the pane instead of "credentials
-rejected". If it recognises the failure and your kubeconfig substantiates the fix, it
-then asks whether to run it for you, naming the exact command (`aws sso login
---profile acme-prod`): accept and kubecom suspends into it in this terminal the way
-`e` suspends into `$EDITOR`, then retries the request that failed; decline and nothing
-runs. It never runs anything you were not asked about, and each offer is good for
-exactly one run.
-
-**Hit an error?** Every error kubecom shows you in the status bar is also written to
-the log file, in full — the toast clears after five seconds and is clipped to your
-terminal width, the log line is neither and carries the underlying cause. Discovery
-problems go there too, including any API group that failed to load (the usual reason a
-kind is missing from the menu). `tail -f ~/.cache/kubecom/kubecom.log` in a second
-terminal while you reproduce, and paste what you see into the bug report.
-
-### From the command line
-
-```bash
-kubecom                        # browse the current context, all namespaces
-kubecom --context my-cluster --namespace my-ns
-kubecom --kubeconfig ~/.kube/other-config -n kube-system
-
-kubecom version                # print build information
-kubecom keys                   # print the resolved keymap (defaults + your config)
-kubecom update                 # replace this kubecom with the newest build of its channel
-
-kubecom --keylog ~/trace.jsonl # record what you pressed (off unless you ask)
-```
-
-`kubecom update` (also `:update` in the UI) fetches the newest build of this
-kubecom's channel, verifies it against the release key built into the binary, and
-installs it; see [docs/install.md](docs/install.md#updating).
-
-#### Recording what you pressed
-
-`--keylog <file>` (or `KUBECOM_KEYLOG=<file>`) appends one JSON object per
-keypress: the key, the surface it went to, and the action it resolved to.
-
-```json
-{"t":"2026-08-15T14:31:02.113Z","key":"j","mode":"browse","action":"nav.down"}
-{"t":"2026-08-15T14:31:03.402Z","key":"x","mode":"browse"}
-```
-
-The second line is the interesting kind — a key that resolved to **no action**,
-meaning somebody reached for something kubecom does not have. If kubecom felt
-awkward somewhere and you want to say so precisely, a trace attached to the issue
-says it better than a description can, and better than a screen recording, where
-"I pressed a key and nothing happened" looks like nothing happening.
-
-`kubecom keys analyze <trace.jsonl>` reads a trace back as findings: the
-unresolved presses ranked by frequency, the presses on text surfaces (which may
-be ordinary typing or a navigation reach the surface swallowed — the picker's
-dead `j`s of the S01 walk were invisible to the dead-end list until this section
-existed), what actions ran, the longest pauses
-(where the walker stopped to think), and any multi-key sequences that were
-started but never finished. It is the read side of the instrument the stories in
-[`stories/`](stories/) are walked against.
-
-It is off unless you pass the flag, and it is worth knowing what a trace contains
-before you send one: every keypress means everything you typed, so filter queries,
-search terms, and namespace and resource names are all reconstructable from it.
-Keys pressed inside an exec shell or your `$EDITOR` never reach it — kubecom is
-suspended while those run.
-
-Flags: `--kubeconfig` (path; default `$KUBECONFIG`, else `~/.kube/config`),
-`--context` (default the file's current-context), `-n`/`--namespace` (default all
-namespaces), `--config` (kubecom config file), `--keylog` (see below). A missing or invalid
-kubeconfig/context fails with a clear message instead of launching. While the UI runs
-it owns the terminal, so all logs (including client-go warnings) go to a file under
-your cache dir (`~/.cache/kubecom/kubecom.log` on Linux), never the screen. That holds
-for standard error as a whole, not just kubecom's own logging: for the life of the UI
-the process's stderr *descriptor* points at that log, so anything a library prints —
-an auth plugin refreshing your credentials, for instance — ends up in the file instead
-of painted over the panes. The exception is the moments kubecom hands you the terminal
-on purpose — the YAML editor on `e`, an exec shell, an accepted re-login — where
-stderr is yours again for as long as that program runs, so it can talk to you normally.
-
-## Install
-
-**The release model changed on 2026-10-06:** kubecom publishes update channels
-(`pkg.neuroplast.io/kubecom`) and a package installs a thin launcher `kubecom`
-plus a seed build it runs out of the box; `kubecom update` then updates the copy
-in `~/.local/kubecom` — see [`docs/install.md`](docs/install.md). The
-`v1.0.0-rc.1` archive below is superseded by that model.
-
-No root, no package manager — installs the launcher and a seed into your home:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/neuroplastio/kubecom/main/install.sh | sh
-```
-
-The current release is the candidate **`v1.0.0-rc.1`**. Download the archive for
-your platform from the [Releases page](https://github.com/neuroplastio/kubecom/releases),
-or install it with Go (**1.24+**; Linux and macOS, Windows via WSL2):
-
-```bash
-go install github.com/neuroplastio/kubecom/cmd/kubecom@v1.0.0-rc.1
-```
-
-Name the version explicitly: `@latest` skips pre-releases, and picks kubecom up
-only once stable `v1.0.0` is tagged. To build the branch instead:
-
-```bash
-git clone -b main https://github.com/neuroplastio/kubecom
-cd kubecom
-go install ./cmd/kubecom      # installs kubecom to $(go env GOPATH)/bin
-```
-
-Homebrew and the AUR package are wired and start working with the stable tag.
-[`docs/install.md`](docs/install.md) has every path, including why
-`go install …@v1` cannot work and what changes for a returning 2020
-kube-commander user.
-
-## Configuration
+## Configure
 
 kubecom needs no configuration. When you want some, it reads
 `~/.config/kubecom/config.yaml`:
 
 ```yaml
-theme: monokai
+theme: catppuccin-mocha
 keys:
   nav.down: ["j", "down"]
   nav.up:   ["k", "up"]
 ```
 
-[`docs/configuration.md`](docs/configuration.md) covers the config file, the
-built-in themes, per-context resource menus, pinned kinds, what kubecom remembers
-per context, and migrating a config from the 2020 kube-commander.
+[`docs/configuration.md`](docs/configuration.md) covers the config file, themes,
+per-context menus, pinned kinds, and how much it remembers.
 [`docs/keybindings.md`](docs/keybindings.md) is the generated key reference.
+
+## Update
+
+`kubecom update` fetches the newest build of this kubecom's channel, verifies it
+against the signing key built into the binary, and installs it next to itself — or,
+installed from a package, into `~/.local/kubecom` for the launcher to run. It is
+also `:update` in the UI. Details: [`docs/install.md`](docs/install.md#updating).
+
+## Command line
+
+```bash
+kubecom                          # browse the current context, all namespaces
+kubecom --context prod -n web    # a specific context and namespace
+kubecom --kubeconfig ~/.kube/x   # a specific kubeconfig
+kubecom update                   # update to the newest build of its channel
+kubecom version                  # build information
+kubecom keys                     # the resolved keymap
+kubecom keys analyze trace.jsonl # read a --keylog trace back as findings
+```
+
+`--keylog <file>` records what you pressed and how it resolved — the instrument
+behind [`stories/`](stories/). It is off unless you ask.
 
 ## Contributing
 
-The rewrite is currently driven autonomously against the plan in
-[`vault/`](vault/). If you'd like to contribute, please open an issue describing
-your intent first so we can align with the milestone plan — see
+The rewrite is driven autonomously against the plan in [`vault/`](vault/) —
+goals, milestones, the live board, the decision log. If you'd like to contribute,
+open an issue first so we can align with the milestone plan; see
 [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-If what you want to change is how kubecom *feels* rather than what it does, the way
-to argue for it is to **write a story**: the situation that made you want the
-change, written so somebody else can walk it. There are five in
-[`stories/`](stories/) to copy the shape from, and a disposable cluster to walk them
-against. A story that stalls two people is a finding; an opinion is an opinion.
+If what you want to change is how kubecom *feels* rather than what it does, write a
+**story**: the situation that made you want the change, so somebody else can walk
+it. There are five in [`stories/`](stories/) to copy the shape from.
 
 ## Special thanks
 
 - [Bubble Tea / Bubbles / Lipgloss](https://github.com/charmbracelet) — the TUI stack
 - [client-go](https://github.com/kubernetes/client-go) — in-process Kubernetes access
 - [k9s](https://github.com/derailed/k9s) — a contemporary Kubernetes TUI in the same space
+
+---
+
+Licensed under [Apache-2.0](LICENSE). The original 2020 kube-commander lives on the
+[`master`](https://github.com/neuroplastio/kubecom/tree/master) branch.
