@@ -159,7 +159,16 @@ func TestALocalBuildUpdatesToTheNewest(t *testing.T) {
 	if got := content(t, exe); got != "kubecom build b" {
 		t.Errorf("binary is %q, want build b", got)
 	}
-	if !strings.Contains(out, "kubecom bbbbbbb+dirty (local build) → 26.10.02-dev.bbbbbbb") || !strings.Contains(out, "replaced "+exe) {
+	if !strings.Contains(out, "kubecom bbbbbbb+dirty (local build) → 26.10.02-dev.bbbbbbb") {
+		t.Errorf("output:\n%s", out)
+	}
+	// update resolves symlinks before replacing, and on macOS the temp dir is
+	// itself behind one (/var → /private/var), so compare the resolved path.
+	resolved, err := filepath.EvalSymlinks(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "replaced "+resolved) {
 		t.Errorf("output:\n%s", out)
 	}
 }
@@ -266,7 +275,7 @@ func TestAnUnwritableDirectoryIsAClearError(t *testing.T) {
 	if err := os.Chmod(dir, 0o555); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 	_, err := run(t, ch, onDev(commitA, "26.10.01-dev.aaaaaaa"), exe, "")
 	if err == nil || !strings.Contains(err.Error(), "is not writable by this user") {
 		t.Fatalf("err = %v", err)

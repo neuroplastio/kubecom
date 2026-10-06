@@ -92,9 +92,9 @@ func Run(ctx context.Context, o Options) error {
 	// the same commit from a clean tree included: it is the same code.
 	if m == nil || (m.Build.Commit == o.Self.Commit && !o.Self.Modified) {
 		if o.Commit != "" {
-			fmt.Fprintf(o.Out, "kubecom %s is already %s; nothing to do\n", o.Self.Version, version.ShortCommit(m.Build.Commit))
+			_, _ = fmt.Fprintf(o.Out, "kubecom %s is already %s; nothing to do\n", o.Self.Version, version.ShortCommit(m.Build.Commit))
 		} else {
-			fmt.Fprintf(o.Out, "kubecom %s is already the newest build on %s; nothing to do\n", o.Self.Version, c.Channel)
+			_, _ = fmt.Fprintf(o.Out, "kubecom %s is already the newest build on %s; nothing to do\n", o.Self.Version, c.Channel)
 		}
 		return nil
 	}
@@ -112,8 +112,8 @@ func Run(ctx context.Context, o Options) error {
 		if _, err := enlaunch.Install(ctx, cfg, m.Build.Commit); err != nil {
 			return fmt.Errorf("update: installing kubecom %s: %w", m.Build.Version, err)
 		}
-		fmt.Fprintf(o.Out, "kubecom %s → %s\n", old, m.Build.Version)
-		fmt.Fprintf(o.Out, "installed in %s; the next kubecom you start runs it\n", o.Home)
+		_, _ = fmt.Fprintf(o.Out, "kubecom %s → %s\n", old, m.Build.Version)
+		_, _ = fmt.Fprintf(o.Out, "installed in %s; the next kubecom you start runs it\n", o.Home)
 		return nil
 	}
 
@@ -134,8 +134,8 @@ func Run(ctx context.Context, o Options) error {
 	}
 	defer func() {
 		if tmp != nil {
-			tmp.Close()
-			os.Remove(tmp.Name())
+			_ = tmp.Close()
+			_ = os.Remove(tmp.Name())
 		}
 	}()
 	// Download checks the size and sha256 the signed manifest names: a
@@ -149,8 +149,8 @@ func Run(ctx context.Context, o Options) error {
 	}
 	tmp = nil
 
-	fmt.Fprintf(o.Out, "kubecom %s → %s\n", old, m.Build.Version)
-	fmt.Fprintf(o.Out, "replaced %s\n", exe)
+	_, _ = fmt.Fprintf(o.Out, "kubecom %s → %s\n", old, m.Build.Version)
+	_, _ = fmt.Fprintf(o.Out, "replaced %s\n", exe)
 	return nil
 }
 
@@ -258,8 +258,8 @@ func install(tmp *os.File, data []byte, exe string) error {
 	}
 	// The rename itself survives a crash only once the directory is flushed.
 	if d, err := os.Open(filepath.Dir(exe)); err == nil {
-		d.Sync()
-		d.Close()
+		_ = d.Sync()
+		_ = d.Close()
 	}
 	return nil
 }
