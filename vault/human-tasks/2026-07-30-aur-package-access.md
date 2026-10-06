@@ -166,3 +166,24 @@ All three steps (create `kubecom-bin`, retire `kube-commander`, add
 re-surfaced at every orient (D256 pt 4). Re-ask alongside the first release tag —
 the AUR publish skips itself without the key (D173 pt 2), so deferral costs nothing
 until then.
+
+## Update (2026-10-06) — the launcher model; the key exists, the tag does not
+
+The release path changed to engram channels and a thin launcher (D292/D293), so
+the package is now **`kubecom-bin` = `kubecom-launcher` installed as
+`/usr/bin/kubecom`**, built by `packaging/aur/publish.sh` from a **stable
+release's** GitHub release. Nothing is published yet. What remains:
+
+1. **Add the release key to the AUR account.** A dedicated key was generated at
+   `~/.ssh/kubecom_aur` (ed25519, no passphrase, per this task). Add its public
+   half at <https://aur.archlinux.org/account>:
+   `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOyKeIj8oL+fKLgQ4JDf70JU6BuKEp7jV9QoYYiL4b9x kubecom-aur-release`
+   (Until it is there, `ssh -T aur@aur.archlinux.org` answers "Permission denied
+   (publickey)" and no push can happen.)
+2. **Cut the first stable release** (`make release` → tag `26.10.06`) so the
+   launcher binaries exist on a GitHub release for the PKGBUILD to fetch.
+3. **Publish**: `packaging/aur/publish.sh 26.10.06 <dir> --push`, where `<dir>`
+   holds the release's `kubecom-launcher_linux_amd64`/`_arm64`.
+4. **Retire `kube-commander`** (the 2020 package, still on the AUR) — merge or
+   delete, and the new PKGBUILD already declares `conflicts=('kubecom'
+   'kube-commander')`.
