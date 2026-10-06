@@ -1,136 +1,274 @@
-# Release: build (and, on a tag, publish) the Linux+macOS artifacts (D7) with
-# goreleaser. Two jobs, one `.goreleaser.yml`:
+# Release: kubecom's two channels on pkg.neuroplast.io, each build bare binaries
+# signed by the release key, which `kubecom update` installs (D18), and beside
+# each the thin launcher a package installs as kubecom (D20).
 #
-#   • snapshot — `goreleaser release --snapshot --clean` on every push to v1/main
-#     and on PRs. No tag, no secrets, publishes nothing (D173 pt 4). This is the
-#     only continuous gate the release config has: `make check` cannot see drift
-#     in `.goreleaser.yml`, and the alternative feedback loop is a tag push, which
-#     the Go module proxy caches permanently and nobody can retry (D173 pt 1).
-#   • release — `goreleaser release --clean` on a `v*` tag, gated on the full
-#     `make check` run of ci.yml (called as a reusable workflow, so the
-#     golangci-lint pin and the matrix stay in exactly one place).
+#   • dev — every push to v1 that passes the gate, named YY.MM.DD-dev.<sha7>
+#     (the commit's date, UTC).
+#   • stable — every tag named for its day, YY.MM.DD, on a commit of v1 (D21).
+#     `make release` pushes one. The tag is the release's name, and it gets a
+#     GitHub release with the same files.
 #
-# The tag push itself is a human act, never an agent's (D173 pt 1).
-# Publishers land one M5 slice at a time, and each must stay inert without its
-# secret so a missing credential can never break a release run that cannot be
-# retried (D173 pt 2). Wired: Homebrew cask (M5-06 — HOMEBREW_TAP_TOKEN below)
-# and the AUR package (M5-07 — AUR_SSH_PRIVATE_KEY). The container image (M5-08)
-# was dropped on 2026-08-09 (D254).
+# Jobs:
+#
+#   • check — the reusable ci.yml `make check` gate, on v1 pushes and tags.
+#   • build — `make dist`, the eight bare binaries, as a job artifact.
+#   • release — on a tag: the GitHub release, a mirror of the channel's files.
+#   • publish — after check and build (and release, on a tag): `engram publish`
+#     the binaries to the channel, then read the build back through the CDN the
+#     way `kubecom update` will.
+#   • attach — on a tag: the build's signed manifest to the GitHub release.
+#
+# There are no secrets. The publish job signs in to AWS with GitHub's OIDC
+# token, as a role that may write under kubecom/ in the bucket and sign with the
+# release key, and nothing else (neuroplastio/infra; the role trusts v1 and
+# day-named tags). The role, bucket, key and distribution are not secret, so they
+# are written here.
 name: Release
 
 on:
   push:
-    branches: [v1, main]
-    tags: ['v*']
-  pull_request:
-    branches: [v1, main]
+    branches: [v1]
+    tags: ['[0-9][0-9].[0-9][0-9].[0-9][0-9]']
 
 permissions:
   contents: read
 
 env:
-  # Pinned exactly, and load-bearing: .goreleaser.yml tracks the current v2
-  # schema and an older goreleaser refuses to parse it at all (v2.5.1 cannot —
-  # D175 pt 2). A bump is a config change to re-dry-run, not a transparent one,
-  # so TestReleaseWorkflowPinsGoreleaser keeps it an exact version.
-  GORELEASER_VERSION: v2.17.1
+  AWS_ROLE_ARN: arn:aws:iam::816026731201:role/github-pkg-publish-kubecom
+  BUCKET: neuroplastio-pkg
+  KMS_KEY: alias/release-signing
+  DISTRIBUTION_ID: E2JRO3ARI7TXDT
+  PKG_URL: https://pkg.neuroplast.io
+  # The release key's public half, pinned here rather than fetched: it is what
+  # the engram installer checks engram against, and what the publish is read
+  # back against. kubecom pins the same key in internal/channel.
+  ENGRAM_SIGNERS: release@neuroplast.io namespaces="engram" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDCsEZcn1tiubvKQzEVs5pJ4QVXoFmSDtO+k6SdetUdf
+  # The channel a build goes to, and how long a superseded build stays on it: a
+  # dev build for 30 days, a release for good.
+  CHANNEL: ${{ github.ref_type == 'tag' && 'stable' || 'dev' }}
+  RETENTION: ${{ github.ref_type == 'tag' && '0' || '720h' }}
 
 jobs:
-  # The dry run: catches release-config drift continuously, instead of on the one
-  # tag push that cannot be taken back.
-  snapshot:
-    name: goreleaser dry run
-    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  check:
+    name: make check
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: build the binaries
+    needs: [check]
     runs-on: ubuntu-latest
-    concurrency:
-      group: release-snapshot-${{ github.ref }}
-      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
-          # goreleaser reads the git log for the changelog and derives the
-          # snapshot version from the most recent tag.
+          # All of v1, to tell whether a tag's commit is on it.
           fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
-          # Single source of truth for the Go floor: the go.mod directive (D23).
           go-version-file: go.mod
           check-latest: true
 
-      # `check` before `release --snapshot`, because they catch different things:
-      # a snapshot happily succeeds on deprecated options, and deprecated options
-      # are how config rots into a release that breaks. M5-06 found two this way
-      # that the snapshot passed over — one of them (`conflicts.formula`) was
-      # accepted, dropped on the floor and would have shipped as a silent no-op.
-      - uses: goreleaser/goreleaser-action@v6
-        with:
-          version: ${{ env.GORELEASER_VERSION }}
-          args: check
+      # A release is a day — 26.02.30 matches the trigger's pattern and is not
+      # one — cut from v1, from a commit no other release is.
+      - name: Check the tag
+        if: ${{ github.ref_type == 'tag' }}
+        run: |
+          tag="$GITHUB_REF_NAME"
+          if [ "$(date -u -d "20${tag//./-}" +%y.%m.%d 2>/dev/null)" != "$tag" ]; then
+            echo "::error::$tag is not a day: a release is named YY.MM.DD"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor HEAD origin/v1; then
+            echo "::error::$tag is on $(git rev-parse --short=7 HEAD), which is not on v1"
+            exit 1
+          fi
+          other="$(git tag --points-at HEAD --list '[0-9][0-9].[0-9][0-9].[0-9][0-9]' | grep -vx "$tag" || true)"
+          if [ -n "$other" ]; then
+            echo "::error::$(git rev-parse --short=7 HEAD) is already released as $other"
+            exit 1
+          fi
 
-      - uses: goreleaser/goreleaser-action@v6
-        with:
-          version: ${{ env.GORELEASER_VERSION }}
-          args: release --snapshot --clean
+      # dist/kubecom_<os>_<arch> and dist/kubecom-launcher_<os>_<arch>: static
+      # (CGO off), stamped with the commit, the channel and the build's name —
+      # the tag, for a release.
+      - run: make dist RELEASE="${{ github.ref_type == 'tag' && github.ref_name || '' }}"
 
-      # Lets a human inspect exactly what a tag would produce *before* pushing
-      # one (D173 pt 1), without installing goreleaser. Archives + checksums
-      # only; the bare-binary archive would double the upload for no new bits.
+      - name: Check the stamp
+        run: |
+          if [ "$CHANNEL" = stable ]; then
+            name="$(echo "$GITHUB_REF_NAME" | sed 's/\./\\./g')"
+          else
+            name="[0-9][0-9]\.[0-9][0-9]\.[0-9][0-9]-dev\.$(git rev-parse --short=7 HEAD)"
+          fi
+          dist/kubecom_linux_amd64 version
+          dist/kubecom_linux_amd64 version | grep -q "^kubecom $name (commit $(git rev-parse HEAD)"
+          test "$(ls dist | wc -l)" -eq 8
+
       - uses: actions/upload-artifact@v4
         with:
-          name: kubecom-snapshot-${{ github.sha }}
-          path: |
-            dist/*.tar.gz
-            dist/checksums.txt
+          name: kubecom-${{ github.sha }}
+          path: dist/
           retention-days: 7
           if-no-files-found: error
 
-  # ci.yml triggers on branches only, so without this a tag could publish a red
-  # tree. `needs:` below makes it a gate rather than a parallel opinion.
-  verify:
-    name: make check
-    if: ${{ startsWith(github.ref, 'refs/tags/') }}
-    uses: ./.github/workflows/ci.yml
-
   release:
-    name: goreleaser release
-    if: ${{ startsWith(github.ref, 'refs/tags/') }}
-    needs: verify
+    name: the GitHub release
+    if: ${{ github.ref_type == 'tag' }}
+    needs: [check, build]
     runs-on: ubuntu-latest
     permissions:
-      # goreleaser creates the GitHub release and uploads the artifacts to it.
       contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Every tag, to find the release before this one.
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: kubecom-${{ github.sha }}
+          path: dist/
+
+      # What changed since the previous release on v1, the chores left out.
+      - name: Write the notes
+        run: |
+          tag="$GITHUB_REF_NAME"
+          commit="$(git rev-parse HEAD)"
+          prev="$(git describe --tags --abbrev=0 --match '[0-9][0-9].[0-9][0-9].[0-9][0-9]' HEAD^ 2>/dev/null || true)"
+          {
+            echo "kubecom $tag is \`$commit\`, published to the stable channel:"
+            echo "\`kubecom update\` in a kubecom from this release follows it."
+            echo
+            if [ -n "$prev" ]; then
+              echo "## Since $prev"
+              echo
+              git log --no-merges --invert-grep --grep='^chore' --format='- %s' "$prev..HEAD"
+            else
+              echo "The first stable kubecom release."
+            fi
+            echo
+            echo "## Checking the files"
+            echo
+            echo "These are the files the stable channel holds for this build:"
+            echo "\`kubecom_<os>_<arch>\`, the complete binary, and"
+            echo "\`kubecom-launcher_<os>_<arch>\`, the thin launcher a package"
+            echo "installs as kubecom. \`manifest\` names each one's sha256, and"
+            echo "\`manifest.sig\` is the release key's signature over it:"
+            echo
+            echo '```sh'
+            echo "echo '$ENGRAM_SIGNERS' > allowed_signers"
+            echo 'ssh-keygen -Y verify -f allowed_signers -I release@neuroplast.io -n engram -s manifest.sig < manifest'
+            echo 'grep -w "sha256=$(sha256sum kubecom_linux_amd64 | cut -d" " -f1)" manifest'
+            echo '```'
+          } > notes.md
+          cat notes.md
+
+      - name: Release
+        run: |
+          tag="$GITHUB_REF_NAME"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --title "kubecom $tag" --notes-file notes.md
+            gh release upload "$tag" dist/* --clobber
+          else
+            gh release create "$tag" --verify-tag --title "kubecom $tag" --notes-file notes.md dist/*
+          fi
+
+  publish:
+    name: publish to kubecom/${{ github.ref_type == 'tag' && 'stable' || 'dev' }}
+    if: >-
+      ${{ !cancelled()
+        && needs.check.result == 'success' && needs.build.result == 'success'
+        && (needs.release.result == 'success' || needs.release.result == 'skipped') }}
+    needs: [check, build, release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Lets the job request the OIDC token it signs in to AWS with.
+      id-token: write
     concurrency:
-      # Never cancel a publishing run: its output leaves the repo (D173 pt 1).
+      # Never cancel a publishing run: its output leaves the repo.
       group: release-${{ github.ref }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/download-artifact@v4
         with:
-          go-version-file: go.mod
-          check-latest: true
+          name: kubecom-${{ github.sha }}
+          path: dist/
 
-      - uses: goreleaser/goreleaser-action@v6
+      # The name the binaries carry, read from one of them, so the channel and
+      # `kubecom version` can never disagree.
+      - name: Name the build
+        run: |
+          chmod +x dist/*
+          echo "KUBECOM_VERSION=$(dist/kubecom_linux_amd64 version | cut -d' ' -f2)" >> "$GITHUB_ENV"
+
+      - name: Install engram
+        run: curl -fsS "$PKG_URL/engram/install.sh" | sh -s -- engram ./bin
+
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
-          version: ${{ env.GORELEASER_VERSION }}
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Writes the Homebrew cask to the neuroplastio/homebrew-tap tap
-          # (M5-06/D182, D253). GITHUB_TOKEN cannot: it is scoped to this repo
-          # only.
-          # An absent secret expands to the empty string, which .goreleaser.yml's
-          # skip_upload reads as "skip the cask" — so a release before the secret
-          # exists publishes everything else and succeeds (D173 pt 2).
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          # SSH private key for the `aur@aur.archlinux.org` account that owns the
-          # `kubecom-bin` package (M5-07/D183). Must be an *unencrypted* key:
-          # goreleaser hard-errors on a password-protected one ("git: key is
-          # password-protected") rather than skipping, so a passphrase turns a
-          # release into a failed release. Absent → empty string → skip_upload
-          # is "true" and the AUR step is a no-op (D173 pt 2).
-          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      # Bare binaries, not archives: `kubecom update` puts the file in place of
+      # itself. dist/<name>_<os>_<arch> is published as <name>/<os>/<arch>, for
+      # kubecom and kubecom-launcher. Idempotent: re-running this job for a
+      # commit already in the journal succeeds without doing anything.
+      - name: Publish
+        run: |
+          artifacts=()
+          for f in dist/*_*_*; do
+            base="${f#dist/}"; name="${base%%_*}"; platform="${base#*_}"
+            artifacts+=("$name/${platform%_*}/${platform#*_}=$f")
+          done
+          bin/engram publish \
+            --bucket "$BUCKET" --kms "$KMS_KEY" --cloudfront "$DISTRIBUTION_ID" \
+            --project kubecom --channel "$CHANNEL" --retention "$RETENTION" \
+            --commit "$(git rev-parse HEAD)" --version "$KUBECOM_VERSION" \
+            --time "$(git show -s --format=%cI HEAD)" \
+            "${artifacts[@]}"
+
+      # Read it back the way `kubecom update` will: through the CDN, against the
+      # pinned key. Three attempts, 10 s then 30 s apart, so a transient CDN
+      # error does not fail a release; a build that really does not verify fails
+      # all three.
+      - name: Verify what was published
+        run: |
+          printf '%s\n' "$ENGRAM_SIGNERS" > allowed_signers
+          for attempt in 1 2 3; do
+            if bin/engram verify --url "$PKG_URL" --project kubecom --channel "$CHANNEL" \
+              --signers allowed_signers --commit "$(git rev-parse HEAD)" --fetch; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              delay=$((attempt == 1 ? 10 : 30))
+              echo "::warning::engram verify failed (attempt $attempt of 3); retrying in ${delay}s"
+              sleep "$delay"
+            fi
+          done
+          echo "::error::engram verify failed three times"
+          exit 1
+
+  # The signed manifest beside the files on the GitHub release, so they can be
+  # checked where they were downloaded. It is the build's own, fetched from the
+  # channel publish just verified.
+  attach:
+    name: the manifest to the GitHub release
+    if: ${{ github.ref_type == 'tag' }}
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - run: |
+          build="$PKG_URL/kubecom/stable/builds/$GITHUB_SHA"
+          curl -fsS -O "$build/manifest" -O "$build/manifest.sig"
+          gh release upload "$GITHUB_REF_NAME" manifest manifest.sig --clobber

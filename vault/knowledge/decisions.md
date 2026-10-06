@@ -1559,3 +1559,27 @@ The vault had grown to ~2.9 MB — 311 per-leg journal files (~2 MB), a `## Done
 4. **A milestone `Status:` line is current state, not history.**
 5. **A leg id remains the join key (D15)** — commit subject, journal bullet, decisions.
 **Refs:** supersedes the board-list half of D102, D224, D225 and D267; D226 pt 2 stands.
+
+### D292 — kubecom publishes engram update channels; goreleaser is retired (2026-10-06, REL-01)
+
+Maintainer direction: "AUR and homebrew should deploy a thin wrapper that gets updates from the engram channel"; follow margin, which did this first. The release path is now margin's, not goreleaser's.
+
+1. **Two channels on `pkg.neuroplast.io/kubecom`.** Every push to `v1` that passes `make check` is a **dev** build; a tag named for its day (`YY.MM.DD`) is a **stable** release. Each is published with `engram publish` — one signed manifest per build naming the size and sha256 of bare `kubecom_<os>_<arch>` and `kubecom-launcher_<os>_<arch>` for linux/darwin × amd64/arm64 — and read back through the CDN by `engram verify` as `kubecom update` will. Dev retention 720h; stable forever.
+2. **Bare binaries, not archives.** `kubecom update` puts the file in place of itself; there is nothing to unpack.
+3. **Name and identity are margin's.** `Version` is CalVer (`YY.MM.DD` stable = the tag; `YY.MM.DD-dev.<sha7>` dev), `Commit` is the identity, `Channel` is stamped only by `make dist` so every local build is on none and updates to dev. `make dist` replaces goreleaser; `make release` tags HEAD with today's date and pushes.
+4. **No secrets.** The publish assumes the OIDC role `github-pkg-publish-kubecom` (infra trusts `refs/heads/v1` and `refs/tags/??.??.??`), which may write under `kubecom/` and sign with `alias/release-signing`.
+5. **Retired with goreleaser**: `.goreleaser.yml`, the AUR/cask/changelog config guards, and the goreleaser pin/dry-run guards. The remaining property — every `version` var is stamped — is guarded against the Makefile instead.
+**Refs:** supersedes the goreleaser halves of **D175**, **D176**, **D185**.
+
+### D293 — a package ships the launcher; the complete binary self-updates (2026-10-06, REL-02)
+
+Extends D292, following margin's D20.
+
+1. **`cmd/kubecom-launcher`** is `enlaunch.Main(channel.Launcher(version.Channel))` and nothing else; a package installs it as `/usr/bin/kubecom`. With `~/.local/kubecom/bin` present it execs it (same pid, arguments and terminal); with none it fetches the channel's newest, verifies it against the pinned key, lays it in `~/.local/kubecom/builds/<commit>/`, links `bin`, and hands over. It compares nothing.
+2. **`kubecom update [commit]`** (internal/update) is in the complete binary. Started by a launcher (it sets `ENLAUNCH_HOME`) it `enlaunch.Install`s the build into the home and never rewrites the file it runs from; otherwise it replaces its own executable atomically (temp file beside it, fsync, rename). It never asks for root: an unwritable directory is an error that says to install somewhere the user owns.
+3. **The server and key are pinned** in `internal/channel`; only a `-tags updatetest` build can move them, and a test without the tag proves the variables do nothing.
+4. **Packaging follows** (ENGRAM-01/02): AUR and Homebrew install the launcher, not the complete binary — the previous cask/AUR shipped archives.
+
+### D294 — an action may be palette-only (2026-10-06, REL-03)
+
+`app.update` is registered in the keymap with **no default key**, reachable by typing `:update`; `keymap.PaletteOnly` names the exception and the help/keybindings guards subtract it. Updating is rare and hands the terminal over, so a bare key would invite an accidental fetch. The palette action suspends through `Model.suspend` and runs `internal/update` **in-process** — a child `kubecom update` would not see `ENLAUNCH_HOME`, which enlaunch unsets when read, and would replace the build binary instead of the launcher's home.

@@ -9,153 +9,120 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-
-	"sigs.k8s.io/yaml"
 )
 
 // Paths are relative to this package dir (go test sets cwd to the package).
 var (
-	goreleaserPath      = filepath.Join("..", "..", ".goreleaser.yml")
+	makefilePath        = filepath.Join("..", "..", "Makefile")
 	goModPath           = filepath.Join("..", "..", "go.mod")
 	releaseWorkflowPath = filepath.Join("..", "..", ".github", "workflows", "release.yml")
 )
 
-// goreleaserConfig is the sliver of .goreleaser.yml this guard reads.
-type goreleaserConfig struct {
-	Builds []struct {
-		ID      string   `json:"id"`
-		Ldflags []string `json:"ldflags"`
-	} `json:"builds"`
+// makeVar returns the value of a Makefile variable, joining backslash
+// continuations. Enough for the `NAME := ...` / `NAME = ...` lines guarded here.
+func makeVar(t *testing.T, name string) string {
+	t.Helper()
+	data, err := os.ReadFile(makefilePath)
+	if err != nil {
+		t.Fatalf("read %s: %v", makefilePath, err)
+	}
+	lines := strings.Split(string(data), "\n")
+	re := regexp.MustCompile(`^` + regexp.QuoteMeta(name) + `\s*:?=\s*(.*)$`)
+	var out []string
+	on := false
+	for _, line := range lines {
+		if !on {
+			m := re.FindStringSubmatch(line)
+			if m == nil {
+				continue
+			}
+			on = true
+			out = append(out, m[1])
+		} else {
+			out = append(out, line)
+		}
+		if on && !strings.HasSuffix(line, "\\") {
+			break
+		}
+	}
+	if !on {
+		t.Fatalf("%s declares no %s", makefilePath, name)
+	}
+	return strings.Join(out, " ")
 }
 
-// TestGoreleaserSetsAllVersionVars is the drift guard for release build
-// metadata: every exported var in this package must be injected by
-// .goreleaser.yml's ldflags, under this package's real import path.
+// TestDistStampsAllVersionVars is the drift guard for release build metadata:
+// every exported var in this package must be injected by the Makefile's `dist`
+// ldflags, under this package's real import path.
 //
 // Without it the failure is invisible until after a release: the binary builds
 // and runs, `kubecom version` just reports the placeholder ("commit none, built
-// unknown"), and a published tag cannot be rebuilt in place (D173 pt 1). Adding
-// a var here without wiring it there now fails `make check` instead.
-func TestGoreleaserSetsAllVersionVars(t *testing.T) {
+// unknown"), and a published channel build cannot be rebuilt in place (D173
+// pt 1). Adding a var here without wiring it there now fails `make check`. The
+// same guard was goreleaser-shaped until goreleaser was replaced by `make dist`
+// + engram channels; the property, not the tool, is what is checked.
+func TestDistStampsAllVersionVars(t *testing.T) {
 	pkgPath := modulePath(t) + "/internal/version"
-
-	data, err := os.ReadFile(goreleaserPath)
-	if err != nil {
-		t.Fatalf("read %s: %v", goreleaserPath, err)
-	}
-	var cfg goreleaserConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		t.Fatalf("parse %s: %v", goreleaserPath, err)
-	}
-	if len(cfg.Builds) == 0 {
-		t.Fatalf("%s declares no builds", goreleaserPath)
-	}
+	flags := strings.ReplaceAll(makeVar(t, "DIST_LDFLAGS"), "$(VERSION_PKG)", pkgPath)
 
 	vars := exportedVars(t)
 	if len(vars) == 0 {
 		t.Fatal("no exported vars found in version.go — the guard is not reading the package")
 	}
+	for _, name := range vars {
+		prefix := "-X " + pkgPath + "." + name + "="
+		if !strings.Contains(flags, prefix) {
+			t.Errorf("DIST_LDFLAGS does not set %s (want %q<value>)", name, prefix)
+		}
+	}
 
-	for _, build := range cfg.Builds {
-		flags := strings.Join(build.Ldflags, " ")
-		for _, name := range vars {
-			prefix := "-X " + pkgPath + "." + name + "="
-			idx := strings.Index(flags, prefix)
-			if idx < 0 {
-				t.Errorf("build %q: %s does not set %s (want %q<template>)",
-					build.ID, goreleaserPath, name, prefix)
-				continue
-			}
-			value := strings.Fields(flags[idx+len(prefix):])
-			if len(value) == 0 || value[0] == "" {
-				t.Errorf("build %q: %s sets %s to an empty value", build.ID, goreleaserPath, name)
-			}
+	// The launcher carries the channel and nothing of a build's identity: its
+	// bytes are its own version, so a build change must not change them.
+	launcher := strings.ReplaceAll(makeVar(t, "LAUNCHER_FLAGS"), "$(VERSION_PKG)", pkgPath)
+	if !strings.Contains(launcher, "-X "+pkgPath+".Channel=") {
+		t.Errorf("LAUNCHER_FLAGS does not stamp Channel (want %q<channel>)", "-X "+pkgPath+".Channel=")
+	}
+	for _, name := range []string{"Version", "Commit", "Date"} {
+		if strings.Contains(launcher, "."+name+"=") {
+			t.Errorf("LAUNCHER_FLAGS stamps %s — the launcher must not carry the build's identity", name)
 		}
 	}
 }
 
-// releaseWorkflow is the sliver of .github/workflows/release.yml this guard reads.
-type releaseWorkflow struct {
-	Env  map[string]string `json:"env"`
-	Jobs map[string]struct {
-		Steps []struct {
-			Uses string            `json:"uses"`
-			With map[string]any    `json:"with"`
-			Env  map[string]string `json:"env"`
-		} `json:"steps"`
-	} `json:"jobs"`
-}
-
-// goreleaserPin is the one accepted spelling of the version input: every
-// goreleaser step reads the workflow-level env var, so the pin has a single home.
-const goreleaserPin = "${{ env.GORELEASER_VERSION }}"
-
-var exactVersion = regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
-
-// TestReleaseWorkflowPinsGoreleaser guards the two properties of the release
-// workflow that cannot be caught by running it, because the run that would catch
-// them is the tag push — permanently cached by the Go module proxy and impossible
-// to retry (D173 pt 1).
+// TestReleaseWorkflowPublishesTheChannel guards the properties of the release
+// workflow that cannot be caught by running it, because the run that would
+// catch them is the tag push — cached permanently by the module proxy and
+// impossible to retry (D173 pt 1).
 //
-//  1. goreleaser is pinned to an exact version, in one place. .goreleaser.yml
-//     tracks the current v2 schema and an older goreleaser cannot parse it at all
-//     (D175 pt 2), so `latest` or a floating `~> v2` would make the release depend
-//     on whatever upstream shipped that morning.
-//  2. A `--snapshot` dry run exists alongside the real release. It is the only
-//     credential-free gate release config has (D173 pt 4); deleting it would look
-//     green until a tag failed.
-func TestReleaseWorkflowPinsGoreleaser(t *testing.T) {
+//  1. Pushes to v1 publish the dev channel; a day-named tag publishes stable —
+//     the margin/engram pipeline kubecom adopted in place of goreleaser.
+//  2. The publish signs in to AWS with OIDC (no stored secret) and reads the
+//     build back through the CDN the way `kubecom update` will.
+//  3. goreleaser is gone: leaving it would be a second, silently-drifting
+//     release path.
+func TestReleaseWorkflowPublishesTheChannel(t *testing.T) {
 	data, err := os.ReadFile(releaseWorkflowPath)
 	if err != nil {
 		t.Fatalf("read %s: %v", releaseWorkflowPath, err)
 	}
-	var wf releaseWorkflow
-	if err := yaml.Unmarshal(data, &wf); err != nil {
-		t.Fatalf("parse %s: %v", releaseWorkflowPath, err)
-	}
+	wf := string(data)
 
-	pin := wf.Env["GORELEASER_VERSION"]
-	if !exactVersion.MatchString(pin) {
-		t.Errorf("%s: GORELEASER_VERSION is %q, want an exact version like v2.17.1 (D175 pt 2)",
-			releaseWorkflowPath, pin)
+	if strings.Contains(wf, "goreleaser") {
+		t.Errorf("%s still names goreleaser; the release path is `make dist` + engram", releaseWorkflowPath)
 	}
-
-	var steps, snapshots, releases, checks int
-	for name, job := range wf.Jobs {
-		for _, step := range job.Steps {
-			if !strings.HasPrefix(step.Uses, "goreleaser/goreleaser-action@") {
-				continue
-			}
-			steps++
-			if got, _ := step.With["version"].(string); got != goreleaserPin {
-				t.Errorf("job %q: goreleaser step pins version %q, want %q so the pin has one home",
-					name, got, goreleaserPin)
-			}
-			args, _ := step.With["args"].(string)
-			switch {
-			case strings.Contains(args, "--snapshot"):
-				snapshots++
-			case strings.Contains(args, "release"):
-				releases++
-			case strings.TrimSpace(args) == "check":
-				checks++
-			}
+	for _, want := range []string{
+		"branches: [v1]",
+		"[0-9][0-9].[0-9][0-9].[0-9][0-9]",
+		"make dist",
+		"engram publish",
+		"--project kubecom",
+		"engram verify",
+		"aws-actions/configure-aws-credentials",
+		"uses: ./.github/workflows/ci.yml",
+	} {
+		if !strings.Contains(wf, want) {
+			t.Errorf("%s is missing %q", releaseWorkflowPath, want)
 		}
-	}
-	if steps == 0 {
-		t.Fatalf("%s runs goreleaser nowhere — the guard is not reading the workflow", releaseWorkflowPath)
-	}
-	if snapshots == 0 {
-		t.Errorf("%s has no `--snapshot` dry run; it is the only credential-free gate the release config has (D173 pt 4)",
-			releaseWorkflowPath)
-	}
-	if releases == 0 {
-		t.Errorf("%s never runs a real `goreleaser release`", releaseWorkflowPath)
-	}
-	if checks == 0 {
-		t.Errorf("%s never runs `goreleaser check`; a snapshot succeeds on deprecated options, "+
-			"and a deprecated option can be silently dropped rather than published (M5-06/D182 pt 5)",
-			releaseWorkflowPath)
 	}
 }
 

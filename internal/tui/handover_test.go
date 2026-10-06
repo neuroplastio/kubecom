@@ -208,4 +208,12 @@ func TestEverySuspendGoesThroughTheHandover(t *testing.T) {
 			t.Fatalf("the remediation suspends as %s, want %s", got, want)
 		}
 	})
+
+	t.Run("update", func(t *testing.T) {
+		m, _ := armedPods(t)
+		_, cmd := m.runUpdate()
+		if got := suspendedCommandType(t, cmd); got != want {
+			t.Fatalf("the update suspends as %s, want %s", got, want)
+		}
+	})
 }

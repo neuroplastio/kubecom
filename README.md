@@ -158,9 +158,14 @@ kubecom --kubeconfig ~/.kube/other-config -n kube-system
 
 kubecom version                # print build information
 kubecom keys                   # print the resolved keymap (defaults + your config)
+kubecom update                 # replace this kubecom with the newest build of its channel
 
 kubecom --keylog ~/trace.jsonl # record what you pressed (off unless you ask)
 ```
+
+`kubecom update` (also `:update` in the UI) fetches the newest build of this
+kubecom's channel, verifies it against the release key built into the binary, and
+installs it; see [docs/install.md](docs/install.md#updating).
 
 #### Recording what you pressed
 
@@ -207,6 +212,12 @@ on purpose — the YAML editor on `e`, an exec shell, an accepted re-login — w
 stderr is yours again for as long as that program runs, so it can talk to you normally.
 
 ## Install
+
+**The release model changed on 2026-10-06:** kubecom publishes update channels
+(`pkg.neuroplast.io/kubecom`) and a package installs a thin launcher `kubecom`
+that runs the complete binary from `~/.local/kubecom` and updates it with
+`kubecom update` — see [`docs/install.md`](docs/install.md). The
+`v1.0.0-rc.1` archive below is superseded by that model.
 
 The current release is the candidate **`v1.0.0-rc.1`**. Download the archive for
 your platform from the [Releases page](https://github.com/neuroplastio/kubecom/releases),

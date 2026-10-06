@@ -14,8 +14,12 @@ func TestDefaultKeymapValid(t *testing.T) {
 	if err := (&Keymap{bindings: km.bindings}).validateForTest(); err != nil {
 		t.Fatalf("default keymap invalid: %v", err)
 	}
-	// Every registered action has at least one default binding.
+	// Every registered action has at least one default binding, except the
+	// palette-only ones, which are deliberately reachable only by typing.
 	for _, a := range Actions() {
+		if PaletteOnly(a) {
+			continue
+		}
 		if len(km.Keys(a)) == 0 {
 			t.Errorf("action %q has no default binding", a)
 		}
