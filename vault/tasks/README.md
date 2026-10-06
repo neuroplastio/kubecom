@@ -5,7 +5,9 @@ can see what's in flight and pick up work without external context.
 
 ## Where tasks live
 
-- **[`board.md`](board.md)** — the live board: Backlog / In Progress / Blocked / Done.
+- **[`board.md`](board.md)** — the live board: Backlog / In Progress / Blocked.
+  Completed items are dropped, not kept (D291); the journal, commits and the
+  decision log are their record.
 - Milestone files in [`../milestones/`](../milestones/) hold the coarse checklists;
   the board holds the fine-grained, actively-worked items.
 
@@ -15,8 +17,9 @@ can see what's in flight and pick up work without external context.
 2. **Claim** it: move to In Progress, add `@agent-id` and `YYYY-MM-DD`.
 3. **Work** on `v1` in small commits; reference the task id in commit messages.
 4. **Capture** any durable learning in [`../knowledge/`](../knowledge/).
-5. **Close**: move to Done with the date and the commit/PR ref. If blocked, move
-   to Blocked with the reason and what would unblock it.
+5. **Close**: **drop** the item from the board — completed items are not kept on
+   the board (D291); the journal bullet, the commit and the decision log are its
+   record. If blocked, move to Blocked with the reason and what would unblock it.
 
 ## Task id format
 

@@ -34,8 +34,8 @@ in one run, each in a fresh subagent, within time/leg budgets (D21).
   every leg; respect its `Blocks:`.** Raise one here instead of faking a green you
   can't earn (D79).
 - [`vault/knowledge/`](vault/knowledge/) — decisions log, target stack, keybindings, legacy findings.
-- [`vault/journal/`](vault/journal/) — execution journal: one file per leg,
-  named `YYYY-MM-DD.N.md` (see [`vault/journal/README.md`](vault/journal/README.md)).
+- [`vault/journal/`](vault/journal/) — execution journal: one key-fact file per
+  month, `YYYY-MM.md` (see [`vault/journal/README.md`](vault/journal/README.md)).
 - [`vault/REWRITE_PLAN.md`](vault/REWRITE_PLAN.md) — the strategic plan narrative.
 
 ## The leg loop (what `/do-rewrite-leg` does)
@@ -67,14 +67,14 @@ in one run, each in a fresh subagent, within time/leg budgets (D21).
    improve that experience (D68).
 6. **Record** — capture durable learnings in `vault/knowledge/`; append any
    decision to `vault/knowledge/decisions.md`.
-7. **Journal + board + milestone** — add a journal entry file
-   (`vault/journal/YYYY-MM-DD.N.md`); move the task to `done` (or split the
-   remainder back to Backlog); tick any milestone exit criteria now met and keep
-   the milestone's `Status:` line current. **The journal is the changelog** —
-   `Status:`, the board's `Last updated:` line, and each **Done entry** are one
-   line each, never a per-leg narrative (D67/D102). A Done entry is `- [x] **ID**
-   <short title> — done YYYY-MM-DD (Dnn, …)` — and `make check` now enforces that
-   shape and a length backstop on the Done list (`internal/vault`, D224).
+7. **Journal + board + milestone** — append a bullet to the current month's
+   journal (`vault/journal/YYYY-MM.md`); drop the finished item from the board
+   (or split the remainder back to Backlog); tick any milestone exit criteria now
+   met and keep the milestone's `Status:` line current. **The journal is the
+   changelog** — `Status:`, the board's `Last updated:` line, and each journal
+   bullet are one line each, never a per-leg narrative (D67/D102). The board holds
+   open work only: completed items are dropped, not indexed, and `make check`
+   fails if a `- [x]` reappears (`internal/vault`, D291).
 8. **Commit + push** to `v1` with a clear message. Stop; report the next suggested leg.
 
 ## Decision authority

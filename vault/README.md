@@ -31,7 +31,7 @@ under version control, and is discoverable without external context.
 | [`feedback/`](feedback/) | Human → agent inbox; checked before every leg, preempts the board, deleted once addressed (D69) |
 | [`human-tasks/`](human-tasks/) | Agent → human tasks (only-a-human work); an open task can **block** board items or a milestone (D79) |
 | [`knowledge/`](knowledge/) | Durable knowledge: decisions, target stack, legacy findings |
-| [`journal/`](journal/) | Execution journal: one file per leg, `YYYY-MM-DD.N.md` |
+| [`journal/`](journal/) | Execution journal: one key-fact file per month, `YYYY-MM.md` |
 | [`REWRITE_PLAN.md`](REWRITE_PLAN.md) | The strategic plan narrative (architecture, phases, risks) |
 
 The rewrite runs **autonomously**: agents self-assign work and progress one small
@@ -54,7 +54,8 @@ periodically via this vault and the journal. See [`../CLAUDE.md`](../CLAUDE.md) 
 5. **Capture knowledge** — anything non-obvious you discover (about the old code,
    the K8s API, a library quirk, a decision) goes into `knowledge/` immediately,
    so the next agent (or a cold-started you) doesn't re-derive it.
-6. **Update state** — check off milestone items, move tasks to Done, note blockers.
+6. **Update state** — check off milestone items, drop finished board items
+   (completed work is dropped, not indexed — D291), note blockers.
 7. **Leave a trail** — commit messages and the task board should let a fresh agent
    reconstruct where things stand.
 
