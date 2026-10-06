@@ -136,8 +136,8 @@ forwards.
 ### Make it yours
 
 - **Keys** — every action rebindable; `kubecom keys` prints your effective map.
-- **Themes** — fourteen built in, including Catppuccin, Nord, Solarized and
-  gruvbox; kubecom sets your terminal background to match.
+- **Themes** — **Fourteen are built in**, including Catppuccin, Nord, Solarized
+  and gruvbox; kubecom sets your terminal background to match.
 - **Menus and CRDs** — a per-context file adds custom resource types; the rest stay
   one `/` or `:resource` away, with a `+N custom` row telling you how many are held
   back. **Pin** the kinds you live in.
