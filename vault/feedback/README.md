@@ -24,8 +24,8 @@ git show <commit> -- vault/feedback/<file>.md         # your words, verbatim
 
 Add a markdown file named **`YYYY-MM-DD-short-slug.md`** (any name but `README.md`;
 the date prefix keeps them sortable/oldest-first). Commit and push it to `v1` — or
-just drop it and let the next leg pick it up. Format mirrors the journal: a title
-plus a few optional fields, then free-form prose. Nothing is mandatory except that
+just drop it and let the next leg pick it up. Format is free-form: a title
+plus a few optional fields, then prose. Nothing is mandatory except that
 it says what you want.
 
 ```
@@ -53,10 +53,10 @@ At the **Orient** step of every leg, before picking a board item:
      slice, and record the triage.
    - A question / direction / decision → decide, and record it in the journal (and
      `decisions.md` as a new `Dn` if it's load-bearing).
-4. **Delete the feedback file** in the same leg's commit, and write a journal entry
-   that says what the feedback was and how it was addressed (implemented / triaged
-   onto tasks X, Y / answered). Deletion is what keeps the inbox a live to-do list —
-   never leave an already-handled item here to be re-read next leg.
+4. **Delete the feedback file** in the same leg's commit, and append a journal
+   bullet that says what the feedback was and how it was addressed (implemented /
+   triaged onto tasks X, Y / answered). Deletion is what keeps the inbox a live
+   to-do list — never leave an already-handled item here to be re-read next leg.
 
 Keep the honesty rules: if feedback asks for a non-goal (see
 [`../goals.md`](../goals.md)) or contradicts a binding decision, don't silently

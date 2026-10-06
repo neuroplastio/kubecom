@@ -20,10 +20,9 @@ if not already in context. Follow these steps in order.
 - Ensure a clean tree (`git status`). If dirty from an interrupted leg, assess:
   finish or revert it — never build on an unknown dirty state.
 - Read: `vault/goals.md`, the **active milestone** in `vault/milestones/`, the top
-  of `vault/tasks/board.md`, and the **3 newest entry files** in `vault/journal/`
-  (named `YYYY-MM-DD.N.md`, `N` **not** zero-padded — so plain filename sort is
-  *wrong* past 9 entries/day: `.10` sorts before `.2`. Sort by numeric `N`:
-  `ls vault/journal/ | sort -t. -k1,1 -k2,2n | tail -3`).
+  of `vault/tasks/board.md`, and the **tail of the current month's journal** —
+  `vault/journal/YYYY-MM.md`, newest entries last. (The month file is a key-fact
+  changelog; the verbatim history lives in git.)
   Skim `vault/knowledge/decisions.md` for anything relevant.
 - **Check the feedback inbox**: list `vault/feedback/`. Any file other than
   `README.md` is unaddressed human feedback and **preempts the board** (see Pick).
@@ -104,14 +103,15 @@ if not already in context. Follow these steps in order.
 
 ## 7. Journal, board & milestone
 
-- Move the task to **Done** in `board.md` as a **one-line entry** — `- [x] **ID**
-  <short title> — done YYYY-MM-DD (Dnn, …)` — never a paragraph; the full detail
-  lives in the journal (D67/D102). `make check` fails on a Done entry that is not
-  that shape, that runs past ~400 runes, or that spills onto a second line
-  (`internal/vault`, D224) — shorten the entry, never the guard. If part remains,
-  split the remainder back into Backlog as new small items.
-- Write one new journal file `vault/journal/YYYY-MM-DD.N.md` (`N` = next unused
-  sequence number for today) using the template below.
+- **Drop the finished item from `board.md`** — the board holds open work only
+  (D291), so a completed item is removed rather than indexed; its record is the
+  journal bullet, the commit and the decision log. If part remains, split the
+  remainder back into Backlog as new small items. (`make check` fails if a
+  `- [x]` reappears — `internal/vault`.)
+- Append one bullet to the **current month's journal**,
+  `vault/journal/YYYY-MM.md` — under a `### YYYY-MM-DD` heading (add the heading
+  if this is the day's first leg) — using the template below. Keep it to the key
+  facts; the full rationale goes in the commit and the decision log, not here.
 - Update the active **milestone file**: tick exit criteria now met; keep its
   `Status:` line current (`todo`/`in-progress`/`done`) (D15). The `Status:` line
   and the board's `Last updated:` line are **one sentence each** — the journal is
@@ -135,19 +135,12 @@ Print a short summary: what the leg did, verification result, commit hash, and t
 
 ## Journal entry template
 
-Write to `vault/journal/YYYY-MM-DD.N.md`. No `Commit:` field — the leg id in the
-commit message is the join key (D15):
+Append to `vault/journal/YYYY-MM.md`, newest at the bottom, under the day's
+`### YYYY-MM-DD` heading. No `Commit:` field — the leg id in the commit message
+is the join key (D15):
 
 ```
-# YYYY-MM-DD — <leg-id>: <short title>
-
-- Agent: <model/id>
-- Milestone: M<x>
-- Did: <1–3 lines on what changed and why>
-- Decisions: <Dnn one-liner, or "none">
-- Files: <key paths touched>
-- Verify: build ✓ · test ✓ · vet ✓ · lint ✓  (note any N/A)
-- Next: <suggested next leg id + one line>
+- **<leg-id>** <short title> — <what changed and why, 1–3 sentences> _(Decisions: Dnn, …)_
 ```
 
 ## Guardrails (do not violate)
@@ -157,4 +150,5 @@ commit message is the join key (D15):
 - Never modify `master` (unless the task explicitly says so); never force-push;
   never rewrite shared history.
 - Never block waiting for human input — decide, record, proceed.
-- Every leg updates both the **journal** and the **board**.
+- Every leg updates both the **journal** and the **board**: the journal gains the
+  leg's bullet, the board loses the finished item (D291).

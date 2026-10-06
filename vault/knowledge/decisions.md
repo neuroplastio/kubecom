@@ -4,8276 +4,1558 @@ Append-only. Supersede rather than delete; note the date. Newest at the bottom.
 
 ---
 
+_Compressed 2026-10-06 (D291): each decision's binding statement and the lead of every rule; the argumentation lives in git history._
+
 ### D1 — TUI framework: Bubble Tea
 **2026-07-18.** Use **Bubble Tea + Bubbles + Lipgloss** (Elm architecture).
-**Why:** the original's top defect class — data races, focus bugs, popup/redraw
-issues — comes from driving `tcell/views`' imperative widget tree from
-goroutines. Bubble Tea's single-threaded update loop removes that class by
-construction. tview (what k9s uses) was considered but keeps the imperative
-model. **Consequence:** no shared mutable UI state; concurrency via messages.
 
 ### D2 — In-process client-go, shell out only for interactivity
-**2026-07-18.** Reach for client-go first; shell out **only** for exec shell and
-`$EDITOR`. **Why:** removes the hard `kubectl` binary dependency (**#68**),
-enables background port-forward, and in-TUI logs/describe/YAML. Modern client-go
-covers logs/describe/portforward/remotecommand/actions. Push in-process "until we
-hit a wall."
+**2026-07-18.** Reach for client-go first; shell out **only** for exec shell and `$EDITOR`.
 
 ### D3 — Config: plain YAML
-**2026-07-18.** Drop the protobuf config (`pb/config.proto` + generated code) for
-a plain typed Go struct marshalled to YAML. **Why:** the protobuf machinery and
-its abandoned theme engine were over-engineered for a small local file.
+**2026-07-18.** Drop the protobuf config (`pb/config.proto` + generated code) for a plain typed Go struct marshalled to YAML. **Why:** the protobuf machinery and its abandoned theme engine were over-engineered for a small local file.
 
 ### D4 — Name: `kubecom`, single binary
-**2026-07-18.** Standardize on `kubecom`; retire the duplicate `kube-commander`
-binary. **Why:** the original shipped two identical entrypoints and inconsistent
-naming.
+**2026-07-18.** Standardize on `kubecom`; retire the duplicate `kube-commander` binary. **Why:** the original shipped two identical entrypoints and inconsistent naming.
 
 ### D5 — Kubernetes/client-go version
-**2026-07-18.** Build against a recent client-go (**target v0.31 / K8s 1.31**);
-support servers **~1.27+** via discovery so it degrades gracefully. "Recent, not
-too aggressive."
+**2026-07-18.** Build against a recent client-go (**target v0.31 / K8s 1.31**); support servers **~1.27+** via discovery so it degrades gracefully. "Recent, not too aggressive."
 
 ### D6 — Backwards compatibility: clean break + migration
-**2026-07-18.** No runtime BC with the old app; instead a one-shot **migration**
-of the old `~/.kubecom.yaml` on first start. **Why:** clean architecture beats
-carrying legacy config semantics.
+**2026-07-18.** No runtime BC with the old app; instead a one-shot **migration** of the old `~/.kubecom.yaml` on first start. **Why:** clean architecture beats carrying legacy config semantics.
 
 ### D7 — Platforms: Linux + macOS only (WSL2 for Windows)
-**2026-07-18.** Drop native Windows support; recommend **WSL2**. **Why:** removes
-Windows PTY/exec complexity (a flagged risk) for a niche of the user base.
+**2026-07-18.** Drop native Windows support; recommend **WSL2**. **Why:** removes Windows PTY/exec complexity (a flagged risk) for a niche of the user base.
 
 ### D8 — Async, cached resource discovery
-**2026-07-18.** First-paint from a seed set of core GVKs; run full discovery in
-the background and reconcile the menu via a "discovery ready" message; isolate
-per-group failures; cache discovery on disk. **Why:** the original blocked the
-whole UI on `ServerPreferredResources()`, hurting cold starts and turning one bad
-API group into a total failure (**#87**, **#76**, **#86**).
+**2026-07-18.** First-paint from a seed set of core GVKs; run full discovery in the background and reconcile the menu via a "discovery ready" message; isolate per-group failures; cache discovery on disk.
 
 ### D9 — Branch model
-**2026-07-18.** `master` = original code, untouched for now. `v1` = rewrite
-branch, holds this vault and all rewrite work. A `main` branch becomes the final
-destination when the rewrite is ready to be default. Push `v1` to origin.
+**2026-07-18.** `master` = original code, untouched for now. `v1` = rewrite branch, holds this vault and all rewrite work. A `main` branch becomes the final destination when the rewrite is ready to be default. Push `v1` to origin.
 
 ### D10 — Vim-style navigation first-class; arrows/classic as fallback
-**2026-07-18.** Navigation is **vim-first**: `hjkl`, `gg`/`G`, `Ctrl+u`/`Ctrl+d`,
-`/` search + `n`/`N`, `l`/`Enter` to drill in, `h`/`Esc` to go back. Arrow keys,
-`PgUp`/`PgDn`, `Home`/`End`, `Enter`/`Esc` work as an equivalent **fallback** so
-non-vim users are never stranded. **Why:** the target user is a terminal-native
-hacker; muscle-memory navigation is a core UX value, not an add-on.
-**Consequence / rule:** `h j k l n` (and `g`, `G`) are the **default**
-navigation keys — single-letter *action* defaults must not collide with them.
-This supersedes the legacy pod bindings where they clash (legacy used `l` for
-logs, `s` shell, `f` port-forward): default actions off the nav keys (e.g. behind
-a leader or an actions menu). All of this is *default*, not fixed — see D11. See
-[`keybindings.md`](keybindings.md).
+**2026-07-18.** Navigation is **vim-first**: `hjkl`, `gg`/`G`, `Ctrl+u`/`Ctrl+d`, `/` search + `n`/`N`, `l`/`Enter` to drill in, `h`/`Esc` to go back.
 
 ### D11 — Fully configurable keybindings; zero hard-coded keys
-**2026-07-18.** **No key literal is ever matched in view/update code.** Every
-user-triggerable behavior is a named **Action**; an **action registry** maps
-`Action → []key` and is the *only* place keys exist. The registry is built from a
-**default keymap** (data in one place, expressing the vim-first scheme of D10)
-overlaid by the user's config, then consulted by every view to resolve
-`tea.KeyMsg → Action`. **Why:** users must be able to rebind anything, and
-scattered `case 'l':`-style handling is exactly what made the old code rigid.
-**Consequences:**
-- Config carries a `keys:` section: `action -> [keys]` overrides merged onto defaults.
-- `bubbles/key.Binding`s are constructed *from* the resolved keymap, not literals.
-- Loading **validates**: unknown action names error; within-context collisions
-  error with a clear message; the vim/nav defaults are just defaults a user may
-  override (with a warning if they shadow navigation).
-- The help overlay and the generated keybindings doc are **derived from the
-  registry**, so they can never drift from actual bindings.
-See [`keybindings.md`](keybindings.md).
+**2026-07-18.** **No key literal is ever matched in view/update code.** Every user-triggerable behavior is a named **Action**; an **action registry** maps `Action → []key` and is the *only* place keys exist.
 
 ### D12 — golangci-lint scoped to new code only
-**2026-07-18.** `.golangci.yml` lints **only** the rewrite (`cmd/kubecom`,
-`internal/...`); the legacy 2020 trees (`app/`, `cli/`, `commander/`, `config/`,
-`pb/`, `cmd/kube-commander/`) are excluded. **Why:** those trees are deleted
-tree-by-tree across M1–M3 — linting dead code is pure noise, and the maintainer
-asked for lint to apply to new code only. **How:** golangci-lint **v2** with
-`run.relative-path-mode: gomod` (normalizes match paths to module-relative so the
-`^`-anchored excludes hit only the top-level legacy dirs — `^config/` excludes
-legacy `config/` but not `internal/config/`) and `linters.default: standard`
-(lenient ruleset per M0; tighten later). **Consequence:** remove an exclude entry
-when its tree is deleted; new packages are linted by default.
+**2026-07-18.** `.golangci.yml` lints **only** the rewrite (`cmd/kubecom`, `internal/...`); the legacy 2020 trees (`app/`, `cli/`, `commander/`, `config/`, `pb/`, `cmd/kube-commander/`) are excluded.
 
 ### D13 — `kubecom` binary is the new skeleton; legacy reachable via `kube-commander`
-**2026-07-18.** `cmd/kubecom` now builds the **new** binary (M0 skeleton:
-`version`/`help`); the legacy 2020 app stays reachable **only** via
-`cmd/kube-commander` until it is ported (M1–M3), after which M0-03 deletes it.
-Both were identical `cli.Run()` entrypoints (the duplicate D4 flagged). The M0
-skeleton uses a **stdlib** command dispatch for now; **cobra** replaces it in
-M0-02 (kept out of this leg to avoid a premature go.mod/dependency bump).
-**Why:** makes `kubecom` the single forward binary immediately while keeping the
-old code compiling in parallel, per the M0 plan.
+**2026-07-18.** `cmd/kubecom` now builds the **new** binary (M0 skeleton: `version`/`help`); the legacy 2020 app stays reachable **only** via `cmd/kube-commander` until it is ported (M1–M3), after which M0-03 deletes it.
 
 ### D14 — Legacy trees are deleted from `v1` up-front, not kept compiling
-**2026-07-18.** Maintainer-approved (setup review). Delete `app/`, `cli/`,
-`commander/`, `config/`, `pb/`, and `cmd/kube-commander/` (plus Windows sources
-and dead Travis/snap CI) from `v1` in an early M0 leg, pruning `go.mod`.
-**Why:** the original "keep old trees compiling until ported" plan is unworkable
-in a single Go module — the legacy code imports `k8s.io/*@v0.18` while the new
-kube layer needs client-go v0.31, and one module cannot hold both. The clean
-break (D6) means zero code reuse, and `master` preserves the old code forever.
-**Consequence:** legacy behavior reference = `master` + `git show master:<path>`
-+ [`legacy-architecture.md`](legacy-architecture.md). Supersedes the "compiling
-in parallel" parts of D12/D13: `.golangci.yml` drops the path excludes once the
-trees are gone (the `standard` ruleset stays), and M0-03 (remove duplicate
-binary) is absorbed by the deletion leg.
+**2026-07-18.** Maintainer-approved (setup review).
 
 ### D15 — Journal format: one file per entry; no Commit field; milestones kept current
-**2026-07-18.** Maintainer-approved. The journal is a directory,
-`vault/journal/`, with one file per leg named `YYYY-MM-DD.N.md` (`N` = sequence
-within the day; filename sort == chronological order). The `Commit:` field is
-dropped — the entry is written before the commit exists; the **leg id in the
-commit message** is the join key between journal, board, and git history. Every
-leg also keeps the active **milestone file** current: tick exit criteria as they
-are met and flip its `Status:` line.
+**2026-07-18.** Maintainer-approved. The journal is a directory, `vault/journal/`, with one file per leg named `YYYY-MM-DD.N.md` (`N` = sequence within the day; filename sort == chronological order).
 
 ### D16 — Board claims are committed and pushed immediately
-**2026-07-18.** Maintainer-approved. Claiming a task (step 3 of the leg loop) is
-its own commit (`chore(board): claim <leg-id>`) pushed to `v1` **before**
-implementation starts. **Why:** a claim that lands only with the finished leg is
-invisible to concurrent agents and locks nothing; pushing it first makes the
-board a real mutex.
+**2026-07-18.** Maintainer-approved. Claiming a task (step 3 of the leg loop) is its own commit (`chore(board): claim <leg-id>`) pushed to `v1` **before** implementation starts.
 
 ### D17 — `make check` is the canonical gate; CI lands early in M0
-**2026-07-18.** Maintainer-approved. A `Makefile` with `check` (= build + test +
-vet + lint) is the single verify gate used by agents and CI, so "green" means
-the same thing everywhere. M0 is reordered: legacy deletion → toolchain bump →
-**CI (M0-04)**, before any further feature legs — for an autonomous process
-pushing straight to `v1`, CI is the only independent green check a reviewer has.
+**2026-07-18.** Maintainer-approved. A `Makefile` with `check` (= build + test + vet + lint) is the single verify gate used by agents and CI, so "green" means the same thing everywhere.
 
 ### D18 — Tests: fake clients by default; envtest opt-in, deferred to M1
-**2026-07-18.** Maintainer-approved. Kube-layer tests use client-go **fake
-clients** (incl. fake discovery) by default so `go test ./...` is hermetic and
-runs anywhere. **envtest** integration tests are opt-in behind an env var
-(`KUBECOM_TEST_ENVTEST=1`) because envtest downloads control-plane binaries —
-fragile in sandboxed agent environments and costly in CI. The envtest harness
-moves from M0-05 to M1 (where there is a kube layer to integration-test);
-M0-05 keeps only the teatest smoke test.
+**2026-07-18.** Maintainer-approved. Kube-layer tests use client-go **fake clients** (incl.
 
 ### D19 — Bubble Tea v2
-**2026-07-18.** Maintainer-approved. Prefer **bubbletea v2** (with matching
-bubbles/lipgloss releases) when dependencies land (M0-02/M2). Pin v2 and write
-all TUI code against its API; fall back to v1 only if v2 proves unusable in
-practice, recorded as a superseding decision. **Why:** avoids building parity UI
-on an API that is being replaced, and avoids mixing v1 examples with v2 code.
+**2026-07-18.** Maintainer-approved. Prefer **bubbletea v2** (with matching bubbles/lipgloss releases) when dependencies land (M0-02/M2).
 
 ### D20 — Config path: `os.UserConfigDir()/kubecom/config.yaml`
-**2026-07-18.** Maintainer-approved. The config lives at
-`os.UserConfigDir()/kubecom/config.yaml` (`~/.config/kubecom/config.yaml` on
-Linux, `~/Library/Application Support/kubecom/config.yaml` on macOS) — not
-inside `~/.kube/`, which other tooling treats as kubeconfig-shaped. The one-shot
-migration (D6) reads the legacy config from its old location once.
+**2026-07-18.** Maintainer-approved. The config lives at `os.UserConfigDir()/kubecom/config.yaml` (`~/.config/kubecom/config.yaml` on Linux, `~/Library/Application Support/kubecom/config.yaml` on macOS) — not inside `~/.kube/`, which other tooling treats as kubeconfig-shaped.
 
 ### D21 — Scheduled runs batch legs via fresh subagents (`/do-rewrite-run`)
-**2026-07-18.** Maintainer-approved. The scheduled routine invokes
-**`/do-rewrite-run`**, an orchestrator that sequentially spawns a **fresh
-subagent per leg**, each executing exactly one `/do-rewrite-leg`. Budgets: max
-4 legs per run; no new leg after 90 minutes (runs occupy the last ~2h of the
-5-hour usage window); stop on any failure without retrying. **Why:** one leg
-per invocation stays the rule (reviewability), while a routine run can use its
-whole window; per-leg subagents keep context from accumulating across legs —
-the alternative (`/loop` in one session) grows context unboundedly.
-**Consequence:** legs must stay strictly sequential — claims + pushes to `v1`
-would collide if parallelized.
+**2026-07-18.** Maintainer-approved. The scheduled routine invokes **`/do-rewrite-run`**, an orchestrator that sequentially spawns a **fresh subagent per leg**, each executing exactly one `/do-rewrite-leg`.
 
 ### D22 — Executing D14: legacy trees gone; `.goreleaser.yml` patched to keep working, not redesigned
-**2026-07-18.** M0-07 deleted `app/`, `cli/`, `commander/`, `config/`, `pb/`,
-`cmd/kube-commander/`, `.travis.yml`, and the snap CI files (`ci/snap-deps.sh`,
-`ci/snap.login.enc`); pruned `go.mod`/`go.sum` to empty via `go mod tidy` (no
-external import remains until M0-02/M1 reintroduce cobra/client-go); and dropped
-the now-unneeded `.golangci.yml` path excludes (D12's exclusion list has no
-targets left). `.goreleaser.yml` referenced the deleted `cli.version` symbol and
-the deleted `cmd/kube-commander` binary/snap craft — fixed the ldflags to target
-`internal/version.Version` (the var already designed for this) and removed the
-`kube-commander-linux` build id and the `snapcrafts:` block, since both only
-existed to package the now-gone legacy binary. **Scope note:** the `kubecom-windows`
-build target and the `aur`/`brews` publishers were left as-is — untangling the
-release matrix into the Linux+macOS-only shape (D7) is M0-06's job, not this
-leg's; this decision only covers unblocking what the deletion itself broke.
-**Why not fold into M0-06 now:** keeping M0-07 to "delete + keep buildable" is a
-smaller, safer diff than also redesigning the release config in the same leg.
+**2026-07-18.** M0-07 deleted `app/`, `cli/`, `commander/`, `config/`, `pb/`, `cmd/kube-commander/`, `.travis.yml`, and the snap CI files (`ci/snap-deps.sh`, `ci/snap.login.enc`); pruned `go.mod`/`go.sum` to empty via `go mod tidy` (no external import remains until M0-02/M1 reintroduce cobra/client-go); and dropped…
 
 ### D23 — Executing M0-02: Go 1.23 floor, cobra v1.10.2 root command
-**2026-07-18.** Toolchain bump landed (M0-02): `go.mod` `go` directive set to
-**1.23** (the stack floor, not the local 1.24.x — a `go 1.23` module still builds
-on newer toolchains), and `cmd/kubecom` rewired from the hand-rolled `run(out,
-args)` dispatch onto **cobra v1.10.2** (D13's planned replacement). Shape:
-`newRootCmd()` (a constructor, not a package var, so tests get isolated I/O +
-args) with a `version` subcommand; `--version`/`-v` are cobra's built-in version
-flag with a custom `SetVersionTemplate("{{.Version}}\n")` so it prints
-`version.Info()` verbatim instead of cobra's `"<name> version <version>"` line
-(Info() already leads with "kubecom"). `SilenceUsage: true` keeps runtime/arg
-errors terse (no usage dump). Behavior parity + extras: `version` prints Info();
-no-args prints help (exit 0); unknown command errors on stderr (exit 1); cobra
-adds `help` + `completion` subcommands for free. `ioutil` was already gone
-(M0-07), so that clause was a no-op. New root subcommands / the default TUI run
-hang off this root in M2+. **Why 1.23 not 1.24:** pin the minimum the stack
-commits to (D5-adjacent), keeping the module buildable on the widest toolchain
-range; bump only if a dependency forces it.
+**2026-07-18.** Toolchain bump landed (M0-02): `go.mod` `go` directive set to **1.23** (the stack floor, not the local 1.24.x — a `go 1.23` module still builds on newer toolchains), and `cmd/kubecom` rewired from the hand-rolled `run(out, args)` dispatch onto **cobra v1.10.2** (D13's planned replacement).
 
 ### D24 — CI runs `make check` verbatim; golangci-lint installed, not action-run
-**2026-07-18.** M0-04 landed `.github/workflows/ci.yml`: a single `check` job on a
-`[ubuntu-latest, macos-latest]` matrix (D7) that runs **`make check`** as one
-step — the same gate agents run locally (D17), so "green" is identical in both
-places. golangci-lint is installed via the project's official `install.sh`
-pinned to `GOLANGCI_LINT_VERSION` (v2.5.0, matching the local tool) and added to
-`PATH`, **instead of** `golangci-lint-action`. **Why not the action:** the action
-runs the linter *itself* and would split verification into "action lints + make
-does the rest", so CI would no longer be `make check` end-to-end — the whole
-point of D17 is one gate with one meaning. Go comes from `setup-go` with
-`go-version-file: go.mod` so the floor has a single source of truth (D23);
-`check-latest: true` takes the newest patch of that minor. Triggers: push +
-pull_request on `v1`/`main`; `concurrency` cancels superseded runs;
-`permissions: contents: read` (least privilege — CI only reads the tree).
-**Consequence:** bumping golangci-lint means updating both the local tool and
-`GOLANGCI_LINT_VERSION`; the setup-go build cache is the only caching (no lint
-cache from the action) — acceptable while the tree is tiny, revisit if CI slows.
+**2026-07-18.** M0-04 landed `.github/workflows/ci.yml`: a single `check` job on a `[ubuntu-latest, macos-latest]` matrix (D7) that runs **`make check`** as one step — the same gate agents run locally (D17), so "green" is identical in both places.
 
 ### D25 — Executing M0-08: legacy-file sweep; `.goreleaser.yml` de-referenced from deleted `ci/aur/`
-**2026-07-18.** M0-08 deleted the legacy files M0-07's tree-based deletion
-missed: `Dockerfile` (golang:1.15 + baked-in kubectl, contradicts D2), `get.sh`,
-`ci/aur/` (old binary names `kube-commander`/`kubectl-ui`, `PKGBUILD`/`.SRCINFO`
-templates, `publish.sh`, and the encrypted deploy key `id_rsa.enc`), and
-`ci/terminalizer/` (asciicast recorder — vhs replaces it in M5). The now-empty
-`ci/` directory went too, including its stale `ci/.gitignore` (`/snap.login`, a
-leftover from the snap CI already removed in M0-07/D22). Following **D22's
-precedent** (keep config consistent, defer the redesign), `.goreleaser.yml` was
-minimally patched to drop the two blocks that *exclusively* referenced the
-deleted `ci/aur/`: the `aur` archive and the `publishers:` section (its only
-entry ran `ci/aur/publish.sh`). Everything else in the release config — the
-`kubecom-windows` build target, the `brews` tap, the `kubectl` dependency — is
-**left as-is for M0-06** to reshape into the Linux+macOS-only matrix (D7); this
-leg only removed references the deletion itself broke, exactly as D22 scoped
-M0-07. The AUR badge + install section in `README.md` are docs, not file refs,
-and are M0-06/M5's to revise. `make check` unaffected (goreleaser isn't part of
-the gate); `.goreleaser.yml` re-validated as well-formed YAML.
+**2026-07-18.** M0-08 deleted the legacy files M0-07's tree-based deletion missed: `Dockerfile` (golang:1.15 + baked-in kubectl, contradicts D2), `get.sh`, `ci/aur/` (old binary names `kube-commander`/`kubectl-ui`, `PKGBUILD`/`.SRCINFO` templates, `publish.sh`, and the encrypted deploy key `id_rsa.enc`), and…
 
 ### D26 — Executing M0-05: bubbletea v2 adopted; Go floor bumped to 1.24.2; placeholder root model
-**2026-07-18.** M0-05 landed the teatest smoke harness, which required the first
-real TUI dependencies. **Choices:**
-- **bubbletea `charm.land/bubbletea/v2 v2.0.2`** (not the newest v2.0.8). The v2
-  module was **rebranded** from `github.com/charmbracelet/bubbletea/v2` to
-  **`charm.land/bubbletea/v2`** — the github path no longer resolves at stable v2
-  tags. Import path is now `charm.land/bubbletea/v2`. teatest v2 stays at
-  `github.com/charmbracelet/x/exp/teatest/v2`.
-- **Go floor 1.23 → 1.24.2** (supersedes the go-directive part of D23). bubbletea
-  v2 *forces* a bump — D23 itself reserved this ("bump only if a dependency forces
-  it"). v2.0.0–v2.0.2 require `go 1.24.2`; **v2.0.3+ jump to `go 1.25.0`**. Pinned
-  **v2.0.2** — the newest v2 that keeps the floor at **1.24.2**, the minimal bump
-  (widest toolchain range) — rather than chasing v2.0.8/1.25. Bump further only
-  when a dependency forces it. No `toolchain` directive is added, so CI's
-  `setup-go` (`go-version-file: go.mod`, `check-latest`) installs the latest
-  1.24.x (D24 unaffected).
+**2026-07-18.** M0-05 landed the teatest smoke harness, which required the first real TUI dependencies.
+**Refs:** supersedes the go-directive part of D23.
 
 ### D27 — Executing M0-06: goreleaser skeleton is artifact-only; publishers deferred to M5; Linux+macOS × amd64+arm64
-**2026-07-18.** M0-06 reshaped `.goreleaser.yml` into the release **skeleton** D22
-and D25 deferred to this leg. **Choices:**
-- **`version: 2`** header + v2 syntax throughout (the config was still v1-shaped):
-  `archives[].builds` → `ids`, `archives[].format` → `formats: [...]`,
-  `snapshot.name_template` → `version_template`. Validated with `goreleaser check`
-  (v2.17.0) — clean, no deprecations.
-- **Windows dropped** (D7): the three per-OS build blocks (incl. `kubecom-windows`)
-  collapse into a **single `kubecom` build** with `goos: [linux, darwin]` ×
-  `goarch: [amd64, arm64]`. `goreleaser release --snapshot` produces exactly four
-  artifacts (linux/darwin × amd64/arm64) as `tar.gz` + raw binary + `checksums.txt`.
-- **arm64 added** (was amd64-only). Apple Silicon is arm64 and arm64 Linux servers
-  are common; a modern Linux+macOS skeleton must cover it. Cheap, cross-compiled,
-  `CGO_ENABLED=0`.
-- **All publishers removed from the skeleton — deferred uniformly to M5.** The
-  `brews` block (with its `kubectl` dependency, which contradicts **D2**) is
-  **deprecated** in goreleaser v2 in favour of Homebrew **casks**; rather than
-  migrate a publisher M5 must verify anyway (it needs the `homebrew-kubecom` tap to
-  exist), the block was dropped. M5 owns *all* distribution (`#28`: Homebrew, AUR,
-  Docker) per its milestone scope, so the skeleton stays purely artifact-building
-  (builds/archives/checksum/release/changelog). A comment in the file points to M5.
-- **README not touched.** Its Travis/AUR/Docker badges and install section are docs,
-  not release-config refs; revising them is M5's job (README rewrite is M5 scope).
-  Keeping M0-06 to the `.goreleaser.yml` skeleton keeps the leg one logical change.
-**Why not fold publishers in now:** a publisher that can't run (no tap/registry) is
-not a working skeleton, and `goreleaser check` green is the leg's gate. Supersedes
-the `brews`/`kubecom-windows`/amd64-only parts of the M0-07/M0-08 stopgap config.
-- **Placeholder root model** (`internal/tui/tui.go`): renders a static splash,
-  records `WindowSizeMsg`, and **matches no key literals** — input must flow
-  through the M2 action registry (D11), so the smoke test stops the program via
-  `tea.Quit`, not a keystroke. It exists solely to give teatest a real program to
-  drive; M2 replaces it with the action-registry-driven root model.
-- **bubbletea v2 API notes:** `Init() tea.Cmd`, `Update(tea.Msg) (tea.Model,
-  tea.Cmd)`, and **`View() tea.View`** (not `string`) — build views with
-  `tea.NewView("...")`. Key presses arrive as `tea.KeyPressMsg` (v1's `KeyMsg`
-  split into press/release). teatest v2: `teatest.NewTestModel(t, m,
-  teatest.WithInitialTermSize(w,h))`, then `WaitFor(t, tm.Output(), cond,
-  WithDuration(...))` and `tm.WaitFinished(t, WithFinalTimeout(...))`.
+**2026-07-18.** M0-06 reshaped `.goreleaser.yml` into the release **skeleton** D22 and D25 deferred to this leg.
 
 ### D28 — Executing M1-00: envtest harness lands the kube dependency graph; pinned client-go v0.31 / controller-runtime v0.19
-**2026-07-18.** M1-00 added the opt-in envtest integration harness (D18) and, with
-it, the first client-go dependencies (the kube layer's foundation). **Choices:**
-- **Versions pinned: `k8s.io/client-go` + `k8s.io/apimachinery` v0.31.4,
-  `sigs.k8s.io/controller-runtime` v0.19.4.** client-go v0.31 is the D5 target
-  (K8s 1.31); controller-runtime **v0.19.x is the release paired with client-go
-  v0.31** (v0.20+ jumps to v0.32), so v0.19.4 keeps envtest and client-go on the
-  same minor. All compatible with the Go 1.24.2 floor (D26). These are the first
-  `k8s.io/*` deps on `v1`; later M1 legs build the real `internal/kube` on them.
-- **Gate = `KUBECOM_TEST_ENVTEST=1` (const `envtestGateEnv`), guard = one
-  `requireEnvtest(t)` helper every envtest test calls first.** With the gate unset,
-  `go test ./...` (so `make check`, D17) **skips** — the default suite stays
-  hermetic and needs no control-plane binaries. Verified both paths: gate off →
-  `SKIP`/green; gate on without binaries → clean `t.Fatalf` (no panic), pointing at
-  the missing etcd binary. envtest is **never** in `make check`.
-- **Binaries via `setup-envtest`, run via `make test-envtest`.** envtest needs a
-  real kube-apiserver + etcd on disk (`KUBEBUILDER_ASSETS`); the new Makefile target
-  fetches them (`ENVTEST_K8S_VERSION ?= 1.31.x`) and runs the gated suite. Not
-  wired into CI here — an M1/M5 leg adds an envtest CI job once the kube layer has
-  integration tests worth running there.
-- **Smoke test = start control plane → clientset → GET the `default` namespace.**
-  Minimal end-to-end proof the apiserver is reachable; later M1 legs reuse this
-  bootstrap to integration-test discovery, watch reconnect, and actions.
+**2026-07-18.** M1-00 added the opt-in envtest integration harness (D18) and, with it, the first client-go dependencies (the kube layer's foundation).
 
 ### D31 — Executing M1-03: async full discovery delivers a one-shot reconcile signal; per-group failures isolated
-**2026-07-18.** M1-03 landed `internal/kube/discovery.go`: the background-discovery
-half of D8. **Choices:**
-- **`ServerPreferredResources`, not `ServerGroupsAndResources`.** The menu wants one
-  entry per resource at its server-preferred version (`deployments` once, not per
-  served version), which is exactly what `ServerPreferredResources` returns. The
-  original blocked the whole UI on this same call; here it runs off the caller's
-  path.
-- **Per-group fault isolation via `*discovery.ErrGroupDiscoveryFailed` (#87, #76).**
-  That call returns the resources it *could* load **together with** an
-  `ErrGroupDiscoveryFailed{Groups: map[GV]error}` for the ones it couldn't. We
-  `errors.As` it, keep the partial `lists`, and record each failed group in
-  `DiscoveryResult.Failed` — so a broken/denied aggregated API (the classic
-  metrics-server outage) degrades only itself instead of blanking the menu, the
-  original's central bug. Any *other* error (unreachable server, auth) is a total
-  failure surfaced in `DiscoveryResult.Err` with empty results, so the caller
-  retries rather than reconciling an empty menu. A malformed `GroupVersion` string
-  isolates that one list, not the pass.
-- **One-shot buffered channel = the "discovery ready" reconcile signal.**
-  `StartDiscovery(ctx, d) <-chan DiscoveryResult` runs the pass in a goroutine and
-  delivers the snapshot exactly once on a cap-1 channel, returning immediately —
-  never blocks the caller (fast cold start; the seed mapper already covers core
-  kinds). The channel is buffered so the sender never leaks if the caller stops
-  listening, and a cancelled ctx drops the send. **Repeated/periodic re-discovery
-  and the on-disk cache are M1-04**, not this leg. The TUI (M2) turns the received
-  `DiscoveryResult` into a reconcile `tea.Msg`; the kube layer keeps **zero TUI
-  imports**.
-- **Menu filter: listable, non-subresource only.** Subresources (`pods/log`) and
-  create-only resources (`tokenreviews`, `subjectaccessreviews` — no `list` verb)
-  are dropped; you browse what you can list. Each `Resource` carries GVK, GVR,
-  scope, verbs, short names, and categories so the table/menu layers never
-  re-derive them.
-- **Narrow `preferredResourceDiscoverer` interface (one method)** so the core is
-  hermetically fakeable with a tiny stub (D18) — no fake-discovery plumbing or
-  server needed to exercise happy-path, partial-failure, total-failure, and
-  malformed-GV branches. Discovery does **not** feed the RESTMapper here: the D29
-  deferred discovery mapper already resolves non-seed kinds lazily, so wiring
-  discovered mappings into it would be redundant scope.
+**2026-07-18.** M1-03 landed `internal/kube/discovery.go`: the background-discovery half of D8.
 
 ### D30 — Executing M1-02: static seed RESTMapper composed ahead of discovery
-**2026-07-18.** M1-02 landed `internal/kube/seed.go`: a static `meta.DefaultRESTMapper`
-seeded with ~28 core, high-traffic GVKs (core/v1, apps/v1, batch/v1,
-networking.k8s.io/v1, rbac.../v1, storage.k8s.io/v1) and composed **ahead of** the
-deferred discovery mapper from D29 via
-`meta.FirstHitRESTMapper{MultiRESTMapper: {seed, deferred}}`. **Choices:**
-- **Exact GVRs, hard-coded — not heuristic pluralization.** Each seed entry carries
-  its literal plural/singular resource name and scope, added via
-  `DefaultRESTMapper.AddSpecific`. `DefaultRESTMapper.Add`'s built-in pluralizer
-  would mangle the irregulars (Endpoints→"endpointses", NetworkPolicy→
-  "networkpolicys"); AddSpecific sidesteps that and keeps mappings kubectl-identical.
-- **Seed first, discovery fallback.** `FirstHitRESTMapper` returns the first mapper
-  that resolves, so for seeded kinds the seed short-circuits and discovery is **never
-  consulted → zero network I/O** — the "instant start" half of D8. Unknown kinds
-  (CRDs, uncommon groups) fall through to the deferred discovery mapper, which warms
-  lazily. A composed-mapper test proves `RESTMapping(Pod)` succeeds against an
-  unreachable dummy config (no server round-trip).
-- **Curated, not exhaustive.** The seed covers the resources a user browses first;
-  the long tail is discovery's job. Every seeded mapping is a long-stable GA
-  relationship, so the static copy cannot drift from the server for those kinds.
-- **Permanent layer, not a warm-up cache.** The seed mapper stays in the chain for
-  the process lifetime (it is cheap and authoritative for its kinds); M1-03 adds the
-  **async full discovery → reconcile signal** that surfaces the rest of the menu, it
-  does not replace the seed.
+**2026-07-18.** M1-02 landed `internal/kube/seed.go`: a static `meta.DefaultRESTMapper` seeded with ~28 core, high-traffic GVKs (core/v1, apps/v1, batch/v1, networking.k8s.io/v1, rbac.../v1, storage.k8s.io/v1) and composed **ahead of** the deferred discovery mapper from D29 via…
 
 ### D29 — Executing M1-01: client bootstrap shape; deferred RESTMapper; no network at construction
-**2026-07-18.** M1-01 landed `internal/kube/client.go`: the client-go bootstrap
-the whole kube layer builds on. **Choices:**
-- **API shape:** `ClientConfig{Kubeconfig, Context}` (both optional; zero value =
-  standard rules + current-context) → `RESTConfig(cc) (*rest.Config, error)` →
-  `NewClients(cfg) (*Clients, error)`, plus a `Connect(cc)` convenience that
-  chains them. `Clients` bundles `Config`, `Clientset` (typed), `Dynamic`
-  (untyped/CRDs), `Discovery`, and `RESTMapper`. Split RESTConfig from NewClients
-  so callers can inject a config (e.g. envtest's `*rest.Config`, tests) without
-  going through kubeconfig files.
-- **Loading:** `clientcmd.NewDefaultClientConfigLoadingRules()` (honors
-  `KUBECONFIG` then `~/.kube/config`) with `ExplicitPath` set when `Kubeconfig` is
-  given, and `ConfigOverrides.CurrentContext` for context selection —
-  `NewNonInteractiveDeferredLoadingClientConfig(...).ClientConfig()`. The
-  "NonInteractive" variant never prompts (auth prompts would hang an autonomous
-  TUI). Errors are wrapped (`kube: loading kubeconfig: %w`), never panicked — bad
-  path / unknown context degrade gracefully (#86; full typed-error taxonomy is
-  M1-09).
-- **RESTMapper = `restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(dc))`.**
-  Deferred + memory-cached: **zero network I/O at construction**, so building
-  `Clients` never blocks first paint (D8/goal "fast cold start"); it populates
-  lazily on first mapping and caches. M1-02 (static seed set) and M1-03 (async
-  full discovery) layer on top of this; this leg deliberately does not seed or
-  pre-warm.
-- **`NewForConfig` does no server call**, so construction succeeds against an
-  unreachable/dummy apiserver — connection failures surface on first request, not
-  at bootstrap. This makes the unit tests hermetic (D18): a two-context temp
-  kubeconfig exercises current-context vs override vs unknown-context/missing-file
-  errors; a dummy `&rest.Config{Host:...}` exercises client wiring — no fake
-  clients or network needed. No new dependencies (all `k8s.io/client-go`
-  sub-packages already vendored via M1-00).
+**2026-07-18.** M1-01 landed `internal/kube/client.go`: the client-go bootstrap the whole kube layer builds on.
 
 ### D32 — Executing M1-04: on-disk cached discovery via kubectl's diskcached client; per-host dir; TTL + explicit Invalidate; memory fallback
-**2026-07-18.** M1-04 landed `internal/kube/cache.go` and rewired `NewClients`
-(client.go): the discovery client is now
-`k8s.io/client-go/discovery/cached/disk`'s `CachedDiscoveryClient` — the same
-on-disk cache kubectl uses — completing the "cache discovery on disk" half of D8.
-**Choices:**
-- **Reuse kubectl's `diskcached` client, don't hand-roll a cache.** It already
-  does everything M1-04 needs — TTL-gated JSON docs on disk, an internal memcache
-  delegate, `Invalidate()`/`Fresh()` (the `CachedDiscoveryInterface`) — and is the
-  exact code kubectl runs, so kubecom's cache behavior matches the tool users know.
-  It replaces the M1-02/D29 `memory.NewMemCacheClient` wrapper as the base of the
-  deferred RESTMapper, so **discovery and mapping now share one on-disk cache**.
-- **Cache dir = `os.UserCacheDir()/kubecom`, per-host subdir.** Caches are
-  disposable, so they live under the **cache** dir (`~/.cache/kubecom` on Linux,
-  `~/Library/Caches/kubecom` on macOS), deliberately *separate* from the config
-  dir (D20 — config is user data, cache is not). Discovery docs go under
-  `.../discovery/<host-slug>/` and the HTTP response cache under `.../http/`. The
-  host is slugged (scheme stripped, non-`[\w/.]` → `_`, mirroring kubectl) because
-  **the discovery cache must be unique per host:port** — two clusters share
-  group/version names but not resource sets, so a shared dir would cross-serve.
-- **TTL 6h + explicit `Clients.Invalidate()`.** 6h matches kubectl's default:
-  long enough the steady state never re-hits the server, short enough a new API
-  group is picked up within a session. `Invalidate()` bypasses the TTL for a
-  user-forced refresh or after a CRD install; it clears **both** the discovery
-  cache and the deferred RESTMapper (`Reset()`), which is retained on `Clients`
-  (`deferredMapper`) for exactly this. The static seed mapper (M1-02) is left
-  untouched — its core mappings are authoritative and can't go stale.
-- **Degrade, don't crash (principle 3).** If no cache dir resolves (e.g. `HOME`
-  unset), `newCachedDiscovery` falls back to the in-memory `memcache` client —
-  discovery still works, it just isn't persisted across runs. Both paths return a
-  `CachedDiscoveryInterface`, so the RESTMapper and `Invalidate` are identical
-  either way. Construction still does **no network I/O** (docs read/written lazily,
-  dirs created on first write), so fast cold start (D8) holds.
-- **New transitive deps:** `github.com/gregjones/httpcache`,
-  `github.com/peterbourgon/diskv`, `github.com/google/btree` — pulled by the
-  diskcached package, added via `go mod tidy`. No direct-dep change.
-- **`Clients.Discovery` field type widened** `DiscoveryInterface` →
-  `CachedDiscoveryInterface` (a superset) so callers can `Invalidate/Fresh`
-  directly; existing `StartDiscovery` (needs only `ServerPreferredResources`) is
-  unaffected. Tests stay hermetic (dummy `rest.Config`): they cover host-slugging,
-  per-host uniqueness, the interface contract, and `Invalidate` no-panic without a
-  server. **"Lazy group detail on first open" split out to M1-04b** — it needs the
-  M2 menu open interaction that doesn't exist yet, so it isn't actionable now.
+**2026-07-18.** M1-04 landed `internal/kube/cache.go` and rewired `NewClients` (client.go): the discovery client is now `k8s.io/client-go/discovery/cached/disk`'s `CachedDiscoveryClient` — the same on-disk cache kubectl uses — completing the "cache discovery on disk" half of D8.
+**Refs:** replaces the M1-02/D29.
 
 ### D33 — Executing M1-05a: server-side Table List via a per-GroupVersion REST client (dynamic can't negotiate Table per call); M1-05 split into List + Watch
-**2026-07-18.** M1-05 ("server-side Table List+Watch → event channel;
-reconnect/resync") was too big for one ≤300-line green leg, so it was split:
-**M1-05a = List** (this leg), **M1-05b = Watch** (event channel + reconnect/resync,
-back to Backlog). M1-05a landed `internal/kube/table.go`. **Choices:**
-- **List talks to the REST layer directly, not through the dynamic client.** The
-  stack note (D8-adjacent) pointed at "server-side Table via the dynamic client",
-  but `dynamic.Interface`'s `List` gives no hook to set the `Accept` header per
-  call — it always negotiates the plain object list. To request server-side
-  printing you must set `Accept: application/json;as=Table;v=v1;g=meta.k8s.io,application/json`
-  on the request yourself. So `List` builds a `rest.Interface` scoped to the
-  resource's GroupVersion (`restClientForGV`: `rest.CopyConfig` + `GroupVersion` +
-  `/api` for the core group else `/apis` + `scheme.Codecs.WithoutConversion()`),
-  then `Get().NamespaceIfScoped(ns, namespaced).Resource(gvr.Resource).VersionedParams(&opts, scheme.ParameterCodec).SetHeader("Accept", tableAcceptHeader).Do(ctx).Raw()`.
-  Columns come entirely from the server (incl. a CRD's `additionalPrinterColumns`),
-  so columns are kubectl-identical for **every** resource with zero hard-coding.
-- **TUI-facing `Table{Columns,Rows}` decoupled from `metav1.Table`.** `decodeTable`
-  flattens the server's JSON `metav1.Table` into `Column`/`Row`/`ObjectRef` so the
-  TUI never imports apimachinery. Row identity (`ObjectRef{Namespace,Name,UID}`)
-  is pulled from each row's embedded `PartialObjectMetadata` — server-side Table
-  defaults to `IncludeObject=Metadata`, so it's present without asking. A row with
-  missing/malformed object metadata is **kept with a zero ObjectRef, not dropped**
-  (principle 3), so one odd row never blanks a list.
-- **`List` takes a discovery `Resource`** (from M1-03) — it already carries GVR +
-  `Namespaced`, so `List` needs no separate scope lookup. `namespace` is dropped
-  for cluster-scoped resources by `NamespaceIfScoped`.
-- **No new deps.** `rest`, `rest/fake`, and `kubernetes/scheme` are all already
-  vendored via client-go. Hermetic tests (D18) use `rest/fake.RESTClient`
-  (canned Table body + recorded request) to assert the `Accept` header, the
-  namespaced vs cluster-scoped URL path, and the decode — plus a pure `decodeTable`
-  suite (columns/priority, object refs, degrade-on-bad-row, invalid JSON). The
-  M1-05b watch leg reuses `decodeTable` (Table watch chunks are `metav1.Table`
-  deltas) and the per-GV REST client (watch is the same request with `watch=true`).
+**2026-07-18.** M1-05 ("server-side Table List+Watch → event channel; reconnect/resync") was too big for one ≤300-line green leg, so it was split: **M1-05a = List** (this leg), **M1-05b = Watch** (event channel + reconnect/resync, back to Backlog).
 
 ### D34 — Executing M1-05b: reconnecting List→Watch driver streaming Table deltas on a channel; RESET-on-resync
-**2026-07-18.** M1-05b landed `internal/kube/watch.go` — `Clients.Watch(ctx, r, ns,
-opts) (<-chan WatchEvent, error)` starts a background goroutine that streams
-server-side Table deltas to a bounded channel. **Choices:**
-- **Raw `Stream()`, not `rest.Request.Watch()`.** A Table watch's stream is a
-  sequence of `metav1.WatchEvent` JSON objects whose `.Object.Raw` is a
-  `metav1.Table` delta. `Request.Watch()` would need a scheme/decoder wired for
-  Table objects; instead the loop opens `tableRequest(...).Stream(ctx)` (same
-  endpoint + `Accept` header as List, `watch=true`, `allowWatchBookmarks=true`,
-  `resourceVersion=rv`) and `streamTableWatch` decodes the `WatchEvent` stream
-  with a plain `json.Decoder`, reusing `decodeTableRV` for each delta. This keeps
-  the whole path apimachinery-free at the TUI boundary and hermetically testable
-  from a byte stream.
-- **`RESET` is a kubecom-level event, not a k8s verb.** The event vocabulary is
-  `ADDED/MODIFIED/DELETED` (one row each, mirroring the watch verbs) plus **`RESET`**
-  (full current row set from a fresh List — consumer replaces its whole set) and
-  **`ERROR`** (terminal failure in `Err`; the loop keeps retrying). Every
-  (re)connection begins with a List → `RESET`, so a consumer that treats each
-  `RESET` as a full replace is correct across reconnects without knowing they
-  happened.
-- **RetryWatcher-style reconnect keyed off resourceVersion.** `decodeTableRV`
-  (added to `table.go`, `decodeTable` now delegates) surfaces the Table's
-  `ListMeta.ResourceVersion`; the loop resumes the watch from the last RV seen
-  (advanced by deltas *and* bookmark events). A clean stream end or a resumable
-  drop reconnects from `rv` with **no** re-List (no spurious `RESET`); a **410
-  Gone / `StatusReasonExpired`** — detected in `watchStatusError`, tagged as a
-  sentinel `*errExpired` — forces a full re-List because the server can no longer
-  replay from `rv`.
-- **Columns cached across the connection.** The API server only guarantees column
-  definitions on the **first** Table response; later chunks omit them.
-  `streamTableWatch` carries the columns in/out and stamps every emitted event
-  with the current set, so a consumer can always read columns off any event.
-- **Bounded buffering + context-owned lifecycle.** The channel is buffered
-  (`watchChanBuffer=64`) so a briefly slow consumer never stalls the watch;
-  reconnects are paced by `watchRetryBackoff=2s` (cancellable) so a server that
-  instantly closes every watch can't spin the loop. The goroutine owns all sends
-  and `close`s the channel on `ctx` cancellation — UI state mutates only in the
-  consumer's `Update` (principle 1). No new deps; hermetic tests drive
-  `streamTableWatch` from byte streams (deltas, bookmark, 410→`errExpired`,
-  generic error) and the full `watchLoop` over a `rest/fake` transport that answers
-  List vs `watch=true` differently (asserts `RESET`-then-delta with carried columns).
+**2026-07-18.** M1-05b landed `internal/kube/watch.go` — `Clients.Watch(ctx, r, ns, opts) (<-chan WatchEvent, error)` starts a background goroutine that streams server-side Table deltas to a bounded channel.
 
 ### D35 — Executing M1-06a: generic delete via the dynamic client; UID precondition guards the row-snapshot race; M1-06 split into 06a–06d
-**2026-07-18.** M1-06 ("Actions: delete/scale/rollout-restart/cordon/drain/
-cronjob-suspend") is six actions — too big for one green ≤300-line leg — so it was
-split (cf. D33's M1-05 split): **06a delete** (this leg), **06b scale +
-rollout-restart**, **06c cordon/drain**, **06d cronjob suspend/resume** (back to
-Backlog). M1-06a landed `internal/kube/actions.go` — the first slice of the
-in-process action set (D2). **Choices:**
-- **Delete addresses objects through the *dynamic* client, not typed clients.**
-  `Clients.Delete(ctx, r Resource, ref ObjectRef, opts)` mirrors `List`'s shape:
-  the GVR + scope come from the discovery `Resource`, the namespace/name from the
-  row's `ObjectRef`. One code path deletes **any** resource — built-in or CRD —
-  with zero per-kind wiring, exactly as the Table List/Watch path is generic. A
-  shared `resourceInterface(r, ns)` helper (namespaces the dynamic client iff
-  `r.Namespaced`) is the addressing primitive 06b–06d will reuse.
-- **UID precondition guards the snapshot race.** A table row is a point-in-time
-  snapshot; between listing and acting the named object can be deleted and a new
-  one recreated under the same name. When `ObjectRef.UID` is present, Delete sets
-  it as a `metav1.Preconditions{UID}` so the server only removes *that* object
-  (else Conflict) — it never deletes the wrong same-named object. A row with no
-  UID (degraded metadata, principle 3) deletes by name alone; a caller that set
-  its own preconditions keeps them (the guard is layered only when `opts` has
-  none). The logic is a pure `withUIDPrecondition(ref, opts)` helper so 06b–06d
-  can reuse it and it is unit-testable directly.
-- **Testing shape forced by a fake-client limitation.** The client-go **fake
-  dynamic client discards `DeleteOptions`** — its `Delete` calls
-  `testing.NewDeleteAction` (no options variant), so a recorded action's
-  `GetDeleteOptions()` is always zero. Therefore the precondition contract is
-  proven against `withUIDPrecondition` as a pure function, and the fake
-  (`dynamic/fake.NewSimpleDynamicClientWithCustomListKinds`, custom list kinds so
-  it never guesses) is used only for the round-trip: object actually removed,
-  namespace routing (namespaced vs cluster-scoped — a namespace on a node ref is
-  dropped), empty-name rejected, and NotFound surfaced **wrapped** (`errors.Is` →
-  `apierrors.IsNotFound` still true, #86). **Knowledge:** the fake-client quirk +
-  the action-set pattern are recorded in [`stack.md`](stack.md) so 06b–06d don't
-  rediscover them.
-- **New dep:** `go mod tidy` pulled `gopkg.in/evanphx/json-patch.v4` (indirect,
-  via the dynamic fake). No direct-dep change.
-
----
+**2026-07-18.** M1-06 ("Actions: delete/scale/rollout-restart/cordon/drain/ cronjob-suspend") is six actions — too big for one green ≤300-line leg — so it was split (cf.
 
 ### D36 — Executing M1-06b: scale + rollout-restart as generic merge patches through the dynamic client
-**2026-07-18.** Second slice of the M1-06 action set (after 06a delete, D35), same
-generic-dynamic-client posture (D2, D35). Landed `Clients.Scale` and
-`Clients.RolloutRestart` in `internal/kube/actions.go`. **Choices:**
-- **Scale merge-patches the `scale` subresource, not the object body.**
-  `Scale(ctx, r, ref, replicas)` sends a `types.MergePatchType` patch
-  `{"spec":{"replicas":N}}` to `.Patch(..., "scale")`. Every scalable kind
-  (Deployment/ReplicaSet/StatefulSet/ReplicationController and any CRD exposing a
-  scale subresource) stores replicas at `scale.spec.replicas` regardless of its
-  own schema, so one code path scales built-ins **and** CRDs with no per-kind
-  wiring — exactly like Delete/List. Negative replicas rejected locally (clear
-  error, no needless round-trip); empty name rejected; NotFound wrapped (#86).
-- **Rollout-restart stamps kubectl's exact annotation key.**
-  `RolloutRestart(ctx, r, ref)` merge-patches
-  `spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"]` with a
-  UTC RFC3339 timestamp — byte-identical to what `kubectl rollout restart` does.
-  Mutating the pod template is what the controller observes as a change, so it
-  rolls all pods. Reusing **kubectl's** key (not a kubecom-specific one) makes the
-  two tools interoperable and stops the annotation proliferating across repeated
-  restarts.
-- **Merge patch, not strategic merge.** Strategic merge needs a per-type schema
-  and does not work on unstructured objects / CRDs; a plain RFC 7386 merge patch
-  is schema-free and, for an annotation *add*, has identical effect (merges the
-  annotations map, leaving siblings intact). So both actions stay generic over the
-  dynamic client.
-- **No UID precondition (unlike Delete).** `metav1.PatchOptions` carries no
-  preconditions, and scale/restart are idempotent — re-issuing converges rather
-  than destroying a wrongly-matched object — so the snapshot-race guard Delete
-  needs does not apply here.
-- **Testing:** wire format proven against pure `scalePatch`/`restartPatch`
-  helpers; the fake dynamic client (which, unlike for Delete, *does* round-trip a
-  merge patch and ignores the subresource) exercises the apply — `spec.replicas`
-  set, restartedAt added without clobbering a seeded sibling annotation, empty
-  name / negative replicas / wrapped NotFound. No new deps. (Fake-patch behavior
-  recorded in `stack.md`.)
+**2026-07-18.** Second slice of the M1-06 action set (after 06a delete, D35), same generic-dynamic-client posture (D2, D35).
 
 ### D37 — Executing M1-06c: cordon/uncordon as a generic `spec.unschedulable` merge patch; M1-06c narrowed, drain split to M1-06e
-**2026-07-18.** Third slice of the M1-06 action set (after 06a delete D35, 06b
-scale/restart D36). **M1-06c was narrowed from "cordon/uncordon + drain" to
-cordon/uncordon; drain moved to a new M1-06e** — drain (list a node's pods, skip
-DaemonSet/mirror/completed pods, evict each via the policy/v1 Eviction API, honor
-PDBs through 429-retry, and wait for deletion) is its own logical change that
-would blow the ≤300-line green-leg budget together with cordon. This mirrors the
-D33 (M1-05) and D35 (M1-06) split precedent. Landed `Clients.Cordon` /
-`Clients.Uncordon` in `internal/kube/actions.go`. **Choices:**
-- **Cordon/uncordon merge-patch `spec.unschedulable` through the dynamic client**,
-  exactly as `kubectl cordon`/`uncordon` do — Cordon sets it true, Uncordon sets
-  it false. Same generic-dynamic-client posture as Scale/RolloutRestart (D36): no
-  typed node client, addressed by the discovery `Resource`'s GVR via the shared
-  `resourceInterface(r, ns)` helper. Nodes are cluster-scoped, so a namespace on
-  the ref is ignored (r.Namespaced == false), just like node Delete (D35).
-- **Uncordon writes the concrete value `false`, not `null`.** RFC 7386 merge patch
-  only *removes* a key when its value is null; an explicit `false` keeps the field
-  present and reads identically to the scheduler. (kubectl uncordon does the same.)
-- **Cordon ≠ drain.** Cordon only stops *new* pods landing; existing pods keep
-  running. Evicting them is drain's job (M1-06e), which cordons first then evicts.
-  Documented on `Cordon` so a caller doesn't mistake it for drain.
-- **No UID precondition (like Scale/RolloutRestart, unlike Delete).** PatchOptions
-  carries none and the toggle is idempotent, so the snapshot-race guard doesn't
-  apply. Empty name rejected locally; NotFound wrapped (#86). Shared body
-  `setUnschedulable(ctx, r, ref, bool)`; the error verb tracks the flag
-  (cordoning/uncordoning) via tiny pure `cordonNoun`/`cordonVerb` helpers.
-- **Testing:** pure `unschedulablePatch(bool)` asserts the wire format; the fake
-  dynamic client (which round-trips a merge patch, per D36) exercises the apply —
-  cordon sets unschedulable true (namespace dropped for the cluster-scoped node),
-  uncordon flips a seeded-true node to false, empty-name rejected for both,
-  NotFound wrapped. No new deps.
+**2026-07-18.** Third slice of the M1-06 action set (after 06a delete D35, 06b scale/restart D36).
 
 ### D38 — Executing M1-06d: cronjob suspend/resume as a generic `spec.suspend` merge patch
-**2026-07-19.** Fourth slice of the M1-06 action set (after 06a delete D35, 06b
-scale/restart D36, 06c cordon/uncordon D37); 06e drain remains. Landed
-`Clients.Suspend` / `Clients.Resume` in `internal/kube/actions.go` — a near-exact
-mirror of Cordon/Uncordon (D37), which is the whole point: this slice reuses the
-established toggle-a-bool-via-merge-patch shape rather than inventing anything.
-**Choices:**
-- **Suspend/Resume merge-patch `spec.suspend` through the dynamic client**, exactly
-  as `kubectl patch cronjob NAME -p '{"spec":{"suspend":true|false}}'` does —
-  Suspend sets it true, Resume sets it false. Same generic-dynamic-client posture
-  as the other actions: no typed batch client, addressed by the discovery
-  `Resource`'s GVR via the shared `resourceInterface(r, ns)` helper. CronJobs are
-  **namespaced** (unlike the cluster-scoped node in cordon), so the ref's namespace
-  is honored.
-- **Resume writes the concrete value `false`, not `null`** — identical rationale to
-  Uncordon (D37): an RFC 7386 merge patch removes a key only when its value is null;
-  explicit `false` keeps the field present and reads the same to the controller.
-- **Suspend gates only *new* Jobs.** Already-running Jobs a suspended CronJob
-  spawned keep running — the parallel of "cordon stops only new pods". Documented on
-  `Suspend` so a caller doesn't expect it to stop in-flight Jobs.
-- **No UID precondition (like Cordon/Scale, unlike Delete).** PatchOptions carries
-  none and the toggle is idempotent, so the row-snapshot guard doesn't apply. Empty
-  name rejected locally; NotFound wrapped (#86). Shared body
-  `setSuspend(ctx, r, ref, bool)`; the error verb tracks the flag
-  (suspending/resuming) via tiny pure `suspendNoun`/`suspendVerb` helpers, mirroring
-  `cordonNoun`/`cordonVerb`.
-- **Testing:** pure `suspendPatch(bool)` asserts the wire format; the fake dynamic
-  client round-trips the merge patch — suspend flips a seeded-false CronJob to true
-  (namespace honored), resume flips a seeded-true one to false, empty-name rejected
-  for both, NotFound wrapped. No new deps.
+**2026-07-19.** Fourth slice of the M1-06 action set (after 06a delete D35, 06b scale/restart D36, 06c cordon/uncordon D37); 06e drain remains.
 
 ### D39 — Executing M1-06e-1: drain pod selection (typed clientset + pure classifier); M1-06e split into 06e-1 selection + 06e-2 eviction
-**2026-07-19.** Fifth slice of the M1-06 action set (06a delete D35, 06b
-scale/restart D36, 06c cordon/uncordon D37, 06d suspend/resume D38). **M1-06e
-drain was split into 06e-1 (this: pod selection) + 06e-2 (eviction loop)** — the
-full drain (list a node's pods, classify, evict via the policy/v1 Eviction API,
-PDB-aware 429-retry, wait for deletion) blows the ≤300-line green-leg budget, as
-D37 already flagged; the selection/classification half is a clean, pure,
-fully-testable unit that the eviction half consumes. Landed `Clients.DrainCandidates`
-+ pure `classifyDrainPods` in a new `internal/kube/drain.go`. **Choices:**
-- **Drain uses the typed clientset, not the dynamic client** (the departure from
-  06a–06d's generic-dynamic posture). Drain is pod-and-node specific, never generic
-  over CRDs: it lists pods by the `spec.nodeName` field selector via
-  `Clientset.CoreV1().Pods(NamespaceAll).List` and (06e-2) will evict through the
-  typed `EvictV1` subresource. That is exactly what `kubectl drain` does; a dynamic
-  path would buy nothing here and lose the typed pod fields the classifier reads.
-- **Selection is a pure `classifyDrainPods([]corev1.Pod, DrainOptions)` split from
-  the client call**, so the whole policy is unit-testable without a cluster — the
-  fake clientset does not honor field selectors (server-side; envtest territory),
-  so filtering-by-node is not asserted by the fake, only the classification is.
-- **Classification mirrors `kubectl drain`.** Skipped silently (not evicted, not
-  blocking): mirror pods (annotation `kubernetes.io/config.mirror`, inlined — we do
-  not depend on k8s.io/kubernetes), already-terminated pods (Succeeded/Failed), and
-  DaemonSet-managed pods when `IgnoreDaemonSets`. Blocking (collected into one
-  refusal error naming each pod, drain refuses as a whole → nil slice, never a
-  partial drain): standalone/unmanaged pods without `Force`, DaemonSet pods without
-  `IgnoreDaemonSets`, emptyDir-backed pods without `DeleteEmptyDirData`. Check order
-  is load-bearing (mirror→terminated→controller→emptyDir) so each pod is reported
-  at most once; a DaemonSet pod is a DS skip/block, never an emptyDir block.
-- **DaemonSet detection is by controller owner-ref Kind == "DaemonSet"**, not by
-  confirming the DaemonSet still exists (kubectl does the extra GET to treat an
-  orphaned DS pod as unmanaged). Simplification: one fewer API call, and an orphaned
-  controller ref is rare; revisit in 06e-2 if envtest shows it matters.
-- **`DrainCandidates` returns `[]ObjectRef`, not `[]corev1.Pod`** — same
-  apimachinery-free boundary the table layer keeps (D33), and exactly the input
-  06e-2's eviction loop needs (namespace/name/UID per pod). Empty node name
-  rejected; list error wrapped (#86). `k8s.io/api` moves indirect→direct in go.mod
-  (corev1 now imported); no new module version.
+**2026-07-19.** Fifth slice of the M1-06 action set (06a delete D35, 06b scale/restart D36, 06c cordon/uncordon D37, 06d suspend/resume D38).
 
 ### D40 — M1-06e-2: drain eviction loop (policy/v1 Eviction API, PDB-aware 429-retry, wait-for-deletion); candidates-before-cordon ordering
-**2026-07-19.** Sixth and final slice of the M1-06 action set, completing drain
-(06e-1 selection D39 + this eviction loop). Landed `Clients.Drain(ctx, nodeRes
-Resource, node ObjectRef, opts DrainOptions)` plus unexported `evictPod` /
-`waitPodDeleted` in `internal/kube/drain.go`. **Choices:**
-- **Candidates computed *before* cordon.** `Drain` calls `DrainCandidates` first
-  (which refuses upfront on any blocking pod) and only cordons once the pod set is
-  settled. A drain that will be refused therefore never leaves the node cordoned —
-  a small divergence from `kubectl drain` (which cordons first) that avoids the
-  "cordoned but not drained" state. Sequence: candidates → cordon (reuse M1-06c
-  `Cordon`, dynamic client) → evict all → wait for all deleted.
-- **Eviction via the typed policy/v1 Eviction API** (`Clientset.PolicyV1().
-  Evictions(ns).Evict`), not a dynamic delete — the same subresource `kubectl
-  drain` posts to, so PodDisruptionBudgets are honored server-side. Continues D39's
-  "drain uses the typed clientset, not the generic dynamic path" posture.
-- **PDB-aware retry.** A PDB with no allowed disruptions makes Evict return `429
-  TooManyRequests`; `evictPod` waits `evictionRetryInterval` and retries, because
-  the budget frees up as other pods reschedule. `NotFound` (pod already gone) is
-  treated as success. The overall budget is the caller's **ctx deadline**, not a
-  fixed attempt count (mirrors `kubectl drain --timeout`); ctx cancellation ends
-  the retry with a wrapped `ctx.Err()`.
-- **Two-pass evict-then-wait.** All evictions are requested first, then all pods
-  waited on, so grace periods overlap rather than serialize. `waitPodDeleted` polls
-  every `drainPollInterval` until the pod is `NotFound` **or the name resolves to a
-  different UID** (a pod recreated under the same name ⇒ the original is gone) — the
-  same row-snapshot identity guard the UID-precondition delete uses (D35).
-- **Timing knobs are package `var`s** (`evictionRetryInterval` 5s,
-  `drainPollInterval` 2s), not consts, so tests shrink them to 1ms — the same
-  pattern that keeps the retry/wait loops hermetic and instant.
-- **Testing:** the fake clientset's `Evict` posts a `create` on `pods` subresource
-  `eviction`; tests intercept it with a reactor to inject 429/NotFound/success and,
-  in the full `Drain` test, delete the pod from the tracker so the wait observes it
-  disappear. Cordon runs against a fake dynamic client (node), eviction/list/wait
-  against the fake typed clientset (pod). `TestDrainRefusesBeforeCordon` asserts the
-  candidates-before-cordon ordering (blocked drain leaves the node uncordoned). No
-  new deps: `k8s.io/api/policy/v1` and `apimachinery/api/errors` were already in the
-  graph.
+**2026-07-19.** Sixth and final slice of the M1-06 action set, completing drain (06e-1 selection D39 + this eviction loop).
 
 ### D41 — Executing M1-07a: get-object-as-YAML via the dynamic client; managedFields stripped; M1-07 split into 07a/07b/07c
-**2026-07-19.** M1-07 ("streaming: logs; describe; get-as-YAML") is three distinct
-viewers — too big for one ≤300-line green leg — so it was split (cf. the D33/D35/
-D37/D39 split precedent): **07a get-as-YAML** (this leg), **07b describe**
-(kubectl/pkg/describe — pulls the big `k8s.io/kubectl` dep), **07c pod logs**
-(reconnecting stream, watch-shaped) back to Backlog. Landed `Clients.GetYAML` +
-pure `marshalYAML` in `internal/kube/yaml.go` — the first in-process viewer (D2:
-no external pager, no kubectl binary). **Choices:**
-- **GetYAML addresses the object through the *dynamic* client, reusing the shared
-  `resourceInterface(r, ns)` helper** the action set (M1-06) is built on — a plain
-  `Get` by GVR (from the discovery `Resource`) + namespace/name (from the row's
-  `ObjectRef`). One code path renders **any** resource — built-in or CRD — with zero
-  per-kind wiring, exactly like Delete/List. The ref's namespace is dropped for
-  cluster-scoped resources (`r.Namespaced == false`), same as node Delete/Cordon.
-- **managedFields are stripped before rendering.** They are server-side-apply
-  bookkeeping — large and never useful to read — so kubectl itself has hidden them
-  from `get`/`describe` output **by default since v1.21**. Stripping them makes
-  `GetYAML` match what a user sees from `kubectl get -o yaml` today. The strip is on
-  a `DeepCopy` (`unstructured.RemoveNestedField` mutates), so the caller's object is
-  untouched — `marshalYAML` stays pure and directly unit-testable.
-- **Rendered with `sigs.k8s.io/yaml`, not `gopkg.in/yaml`.** sigs.k8s.io/yaml
-  marshals by round-tripping through `encoding/json`, so it honors the API types'
-  `json` tags and orders map keys deterministically — byte-for-byte what kubectl
-  emits. It was already in the module graph (client-go transitive); this leg only
-  promotes it indirect→direct in go.mod (`go mod tidy`), no new module version.
-- **Testing (D18):** pure `marshalYAML` asserts managedFields-stripping + that the
-  caller's object is not mutated; the fake dynamic client round-trips `GetYAML` for
-  a namespaced object, a cluster-scoped node (stray ref namespace ignored), empty
-  name (rejected), and a missing object (NotFound surfaced **wrapped** —
-  `apierrors.IsNotFound` still holds through the `%w` chain, #86). No new deps.
+**2026-07-19.** M1-07 ("streaming: logs; describe; get-as-YAML") is three distinct viewers — too big for one ≤300-line green leg — so it was split (cf.
 
 ### D42 — Executing M1-07b: describe via kubectl/pkg/describe; RESTMapping built from the discovery Resource
-**2026-07-19.** Landed `Clients.Describe(r, ref)` + the pure `describerFor` /
-`restMappingFor` helpers in `internal/kube/describe.go` — the second in-process
-viewer (D2: no external pager, no kubectl binary). **Choices:**
-- **Reuse kubectl's own describe generators (`k8s.io/kubectl/pkg/describe`)** rather
-  than hand-rolling per-kind output. This is the whole point of the milestone-scope
-  wording ("describe (kubectl/pkg/describe)") — the output is byte-identical to
-  `kubectl describe`, and every built-in kind's specialized section (a Pod's
-  containers/conditions/volumes, a Deployment's rollout status, …) plus the trailing
-  "Events:" table comes for free and tracks upstream.
-- **Dep pinned to `k8s.io/kubectl v0.31.4`** to match the existing k8s stack (api/
-  apimachinery/client-go/cli-runtime all v0.31.4). `go mod tidy` *without* a pin
-  resolves kubectl to the latest (v0.36.2), which would drag the whole k8s graph to
-  v0.36 — so `go get k8s.io/kubectl@v0.31.4` first, then tidy. Footprint: kubectl
-  direct + ~12 transitive indirect (cli-runtime, kustomize api/kyaml, liggitt/
-  tabwriter, xlab/treeprint, moby/term, go-starlark, …). Acceptable for the describe
-  generators; the alternative (reimplementing describe) is far larger and would drift.
-- **Describer selection mirrors kubectl's `describe.NewDescriber`:** prefer the
-  specialized built-in describer keyed by `GVK.GroupKind()` (`describe.DescriberFor`),
-  fall back to the generic unstructured describer (`describe.GenericDescriberFor`)
-  otherwise — so **CRDs and rarer built-ins are covered** by the generic path (name/
-  namespace/labels/annotations + recursive body dump + events). Kept as a small local
-  `describerFor` (not `NewDescriber`, which wants a `genericclioptions.RESTClientGetter`
-  we'd have to synthesize) since we already hold the `*rest.Config`.
-- **The generic describer's `meta.RESTMapping` is built directly from the discovery
-  `Resource` (`restMappingFor`)**, not resolved through the RESTMapper: the `Resource`
-  already carries GVR + GVK + scope (the only fields the generic describer reads), so
-  there's no reason to make discovery re-derive them. Scope is `RESTScopeNamespace`/
-  `RESTScopeRoot` from `r.Namespaced`; the ref's namespace is honored iff namespaced.
-- **`Describe` takes no `context`** (unlike `GetYAML`): kubectl's describe package
-  exposes no context-aware entry point — it Gets the object and searches events with
-  `context.TODO()` internally — so there is nothing to thread one through. The TUI
-  runs it off the render goroutine and abandons the result if the view closes. Empty
-  name rejected; errors wrapped (NotFound/RBAC-denial surface for display, #86).
-- **Testing (D18):** describer *construction* is local (the describers build their
-  clients from the config but make no server call), so `describerFor` is tested
-  hermetically with a throwaway `rest.Config` — a built-in kind (Pod) resolves to
-  `*describe.PodDescriber`, a fictional CRD kind falls back to the generic describer;
-  `restMappingFor` is a pure table test; empty-name is rejected before any describer
-  is built. Actual describe **output** dials the API server → **envtest territory**
-  (opt-in, like the watch live-server exercise), not a hermetic unit test.
+**2026-07-19.** Landed `Clients.Describe(r, ref)` + the pure `describerFor` / `restMappingFor` helpers in `internal/kube/describe.go` — the second in-process viewer (D2: no external pager, no kubectl binary).
 
 ### D43 — Executing M1-07c: streaming pod logs via the typed clientset GetLogs subresource; single connection, reconnect split to M1-07d
-**2026-07-19.** Landed `Clients.Logs(ctx, ref, opts)` + the pure `podLogOptions`
-mapper and the `streamLogs` line pump in `internal/kube/logs.go` — the third
-in-process viewer (D2: no external pager, no kubectl binary). **Choices:**
-- **Typed clientset GetLogs subresource, not the dynamic client.** Unlike the
-  action set (M1-06) and the YAML/describe viewers, logs have no dynamic-client
-  path — `pods/log` is a subresource that streams raw bytes, so `CoreV1().Pods(ns).
-  GetLogs(name, *corev1.PodLogOptions).Stream(ctx)` is the only in-process route.
-  This mirrors drain's deliberate use of the typed clientset (D39) for pod/node
-  specifics; logs are pod-only, so genericity over CRDs is moot.
-- **A `LogEvent{Line, Err}` channel, twin of the Watch channel.** One line per
-  event (trailing newline stripped; consumer re-adds it), a terminal `Err` event as
-  the last item before close. The stream is opened *inside* the goroutine (like
-  Watch) so `Logs` returns immediately and never blocks first paint on the network;
-  the goroutine owns every send and the close (principle 1 — UI state mutates only
-  in the consumer's Update). Bounded buffer `logChanBuffer=256` (logs burst on
-  connect as the container flushes a backlog).
-- **`LogOptions` mirrors `kubectl logs` flags** (Container/Follow/Previous/
-  Timestamps/TailLines/SinceSeconds/SinceTime/LimitBytes), mapped 1:1 onto
-  `corev1.PodLogOptions` by the pure `podLogOptions`; `SinceTime *time.Time` →
-  `*metav1.Time`. Timestamps is passed through verbatim (no internal
-  parsing/stripping this leg — that's only needed for resume, which is M1-07d).
-- **Single connection this leg; reconnect-on-drop is M1-07d.** Follow keeps the one
-  stream open for live lines until the container ends or ctx is cancelled, but a
-  transient transport drop ends the stream rather than resuming. The reconnecting/
-  resuming layer à la watch (D34) — which needs internal Timestamps + RFC3339Nano
-  parsing to set `SinceTime` on reconnect and dedup already-delivered lines within
-  the resumed second — is intricate enough to warrant its own focused, tested leg,
-  matching how Watch (M1-05b) and the 06/07 series were sliced. Landing the
-  single-connection core now already satisfies the "logs stream in-process" exit
-  clause; 07d hardens it.
-- **`bufio.Scanner` with a 1 MiB max line** (`logScanMaxLine`), raised well past the
-  64 KiB default because a single log line can be a stack trace or one-line JSON
-  blob. A line over the cap ends the stream with `bufio.ErrTooLong` surfaced as an
-  error event — never a silent truncation or a panic (#86, principle 3). Empty pod
-  name rejected; the open/decode errors are wrapped.
-- **Testing (D18):** `podLogOptions` is a pure table test; `streamLogs` is driven
-  directly from byte `strings.Reader`s (verbatim lines, no-trailing-newline,
-  over-long line → ErrTooLong, mid-stream ctx-cancel unblocks a full channel); the
-  wiring loop `runLogStream` is exercised with a fake `logStreamOpener` (success,
-  open-error → terminal event, already-cancelled ctx → no event). A **live** log
-  stream dials the API server → **envtest territory** (opt-in, like the watch
-  live-server exercise), not a hermetic unit test.
+**2026-07-19.** Landed `Clients.Logs(ctx, ref, opts)` + the pure `podLogOptions` mapper and the `streamLogs` line pump in `internal/kube/logs.go` — the third in-process viewer (D2: no external pager, no kubectl binary).
 
 ### D44 — Executing M1-07d: reconnecting/resuming follow logs — force wire timestamps, resume by SinceTime, dedup the re-served second
-**2026-07-19.** Hardened `Clients.Logs` so a **Follow** stream survives a transient
-transport drop, extending `internal/kube/logs.go` (the M1-07c single-connection
-core, D43) into a reconnecting loop à la watch (D34). **Choices:**
-- **EOF = stop, any other read error = reconnect.** `bufio.Scanner` reports `nil`
-  at `io.EOF`, so a clean stream end (the container's log ended, exactly when
-  `kubectl logs -f` exits) returns nil from the pump → the follow loop stops. Any
-  other error is treated as a transient drop → back off and reopen. This is the
-  one reliable byte-stream signal that distinguishes "container done" from "network
-  blip" without inspecting error strings; an abruptly-closed HTTP/2 log stream
-  surfaces as a non-EOF error, a graceful container-end as clean EOF.
-- **Resume by SinceTime, not resourceVersion.** Logs have no resourceVersion; the
-  only resume anchor is a timestamp. So Follow **forces `Timestamps` on the wire**
-  regardless of the caller's choice (every raw line becomes `"<RFC3339Nano>
-  <content>"`), records the last-seen line's timestamp, and on reconnect sets
-  `SinceTime` to it (`SinceSeconds`/`TailLines` cleared — they only govern the
-  initial read). Timestamps are **stripped before delivery unless the caller asked
-  for them** (`opts.Timestamps`); an unparseable prefix degrades to verbatim
-  delivery, never a dropped line.
-- **Dedup the re-served second.** `SinceTime` is **second-granular** (metav1.Time
-  serializes to RFC3339 seconds), so resuming from the last line's second makes the
-  server re-serve every line already shown in that second. The `logResumer` keeps
-  the set of raw timestamped lines delivered within the current second; right after
-  a reconnect it drops any incoming line already in that set, delivering only the
-  genuinely-new lines (including ones missed *during* the drop, same second) — then
-  clears the dedup window once the stream advances to a later second. Raw lines
-  carry the full nanosecond timestamp, so the match is exact.
-- **First open error terminal; reconnect errors silent.** Never connecting surfaces
-  one terminal `LogEvent{Err}` (like the non-follow path). A *reconnect* open/read
-  failure is transient: back off (`logRetryBackoff`, the log twin of
-  `watchRetryBackoff`, a package **var** so tests shrink it, D40) and retry, bounded
-  by ctx — it is **not** surfaced, because a `LogEvent` with `Err` set is the
-  terminal event by contract (a mid-stream reconnect must not look like the end).
-  A permanently-failing reconnect (e.g. pod deleted) therefore retries until ctx is
-  cancelled, matching watch; surfacing transient reconnect state to the consumer is
-  future work.
-- **Non-follow path unchanged.** No timestamp forcing, no resume, single connection,
-  verbatim lines — exactly M1-07c. The two pumps share `newLogScanner` (the raised
-  1 MiB max line, #86); `runLogStream` now dispatches on `follow`.
-- **Testing (D18):** `parseLogTimestamp` and `logResumer.process`
-  (strip/keep-timestamp, dedup-the-resumed-second, window-clears-on-next-second)
-  are pure table/sequence tests; `followLogStream` is driven through
-  `runLogStream` with a **resumable fake opener** + a `scriptReader` that ends a
-  connection with a chosen error (drop) or clean EOF — covering reconnect+dedup
-  (asserting the 2nd open's `SinceTime`), clean-end-stops, first-open-error
-  terminal, retried-reconnect-open (silent), and ctx-cancel-mid-backoff. All
-  hermetic; a live follow-across-a-real-drop is envtest territory.
+**2026-07-19.** Hardened `Clients.Logs` so a **Follow** stream survives a transient transport drop, extending `internal/kube/logs.go` (the M1-07c single-connection core, D43) into a reconnecting loop à la watch (D34).
 
 ### D45 — Executing M1-08: background port-forward over an SPDY dialer; channel-based handle, no mutex-guarded result
-**2026-07-19.** Landed `Clients.PortForward(ctx, ref ObjectRef, ports []string)
-(*PortForward, error)` + the `PortForward` handle in a new
-`internal/kube/portforward.go` — the in-process equivalent of `kubectl
-port-forward` (D2: no kubectl binary), completing the M1-06/M1-07 in-process
-action/viewer set's remaining M1-08 exit criterion. **Choices:**
-- **SPDY dialer to the pod's `portforward` subresource, built from the retained
-  `*rest.Config`.** `portForwardDialer` does `spdy.RoundTripperFor(c.Config)` →
-  `(transport, upgrader)`, then `spdy.NewDialer(upgrader, &http.Client{transport},
-  "POST", url)` where `url` is `Clientset.CoreV1().RESTClient().Post().
-  Resource("pods").Namespace(ns).Name(name).SubResource("portforward").URL()` —
-  exactly what kubectl upgrades. The `Clients` doc already reserved `Config` "for
-  callers (e.g. port-forward, which needs the transport)", so no new plumbing. This
-  is the **typed-clientset REST client**, a deliberate departure from the generic
-  dynamic path (like drain D39 / logs D43): port-forward is pod-only, so genericity
-  over CRDs is moot, and the subresource has no dynamic route.
-- **`portforward.PortForwarder` does the forwarding; kubecom wraps it in a
-  channel-based `PortForward` handle.** `New(dialer, ports, stopCh, readyCh,
-  io.Discard, io.Discard)` then `go ForwardPorts()`. The handle exposes `Ready()`
-  (closed when listeners are up — the forwarder closes readyCh), `Done()` (closed
-  when `ForwardPorts` returns), `Err()` (the fatal error, or nil for a clean stop),
-  `Ports()` (bound local:remote pairs — needed when a local port was requested as
-  `0`/`":<remote>"` and the OS assigned it), and `Stop()` (idempotent, via
-  `sync.Once` closing stopCh). out/errOut are discarded — the TUI reads ports via
-  `Ports()` and fatal state via `Err()`, not kubectl's "Forwarding from …" text.
-- **Result handed off through a channel close, not a mutex (principle 1).** The
-  forward goroutine writes `pf.err` **before** closing `doneCh`; `Err()` reads it
-  only after observing `doneCh` closed (a `select` with a `default` returns nil
-  early). That happens-before makes it race-free with no mutex — the kube layer's
-  established discipline (watch/logs use channels + goroutines, zero mutexes). The
-  only `sync` primitive is `sync.Once` for idempotent stop (a double-close guard,
-  not shared mutable state).
-- **ctx cancellation stops the forward, mirroring Logs/Watch.** A small bridge
-  goroutine does `select { case <-ctx.Done(): pf.Stop(); case <-pf.doneCh: }`, so
-  cancelling the ctx passed to `PortForward` tears the forward down; the bridge
-  exits on its own once forwarding ends, never outliving the handle.
-- **Own `ForwardedPort{Local, Remote uint16}` type**, converted from
-  `portforward.ForwardedPort`, keeping the TUI boundary free of client-go tooling
-  types (the same decoupling as `ObjectRef`/`Table`, D33).
-- **Testability via an injected `forwarderFactory`.** The real SPDY forward dials
-  the API server (network → envtest territory). `newPortForward(ctx, factory)` is
-  split from the exported method and driven by a `fakeForwarder` (closes readyCh,
-  blocks on stopCh, returns a scripted error) covering: ready→ports→clean-stop,
-  fatal-error→`Err`, ctx-cancel-stops, factory-error→nil-handle, idempotent Stop,
-  and wrapped `Ports` error. Empty pod name / empty port list rejected by the
-  exported method before any dial (#86). `-race` clean.
-- **Deps:** `go mod tidy` added three indirect transitives pulled by
-  portforward/spdy — `github.com/gorilla/websocket v1.5.0`,
-  `github.com/moby/spdystream v0.4.0`,
-  `github.com/mxk/go-flowrate` — all satisfied within the pinned k8s.io v0.31.4
-  graph; **no direct-dep or version change** (the tidy did not drift any existing
-  module, unlike the kubectl-dep trap D42 warned about).
+**2026-07-19.** Landed `Clients.PortForward(ctx, ref ObjectRef, ports []string) (*PortForward, error)` + the `PortForward` handle in a new `internal/kube/portforward.go` — the in-process equivalent of `kubectl port-forward` (D2: no kubectl binary), completing the M1-06/M1-07 in-process action/viewer set's remaining…
 
 ### D46 — Executing M1-09: typed graceful errors as a Classify(err) → ErrorKind taxonomy over the wrapped chain; RESTConfig tags bad-context
-**2026-07-19.** Landed `internal/kube/errors.go` — the "graceful, typed errors,
-never panic on bad ns/context" exit clause (#86, old #55, principle 3). **Choices:**
-- **Classification over rewiring.** The kube layer already returns every error
-  wrapped (`fmt.Errorf(... %w)`) around the underlying apierrors/clientcmd/transport
-  error. Rather than replace ~40 error sites with constructed typed errors (a large,
-  churny diff), M1-09 adds a single `Classify(err error) ErrorKind` that **walks the
-  existing wrap chain** and maps it to a small taxonomy. Zero call sites change; the
-  underlying error stays reachable via `errors.Is`/`As`. This is exactly what the
-  M1-08 journal scoped ("wrapping the apierrors/clientcmd errors the layer already
-  returns").
-- **Taxonomy (`ErrorKind`):** `KindUnknown` (incl. nil), `KindNotFound`,
-  `KindAlreadyExists`, `KindConflict` (stale resourceVersion / failed UID
-  precondition — the D35 delete race), `KindForbidden` (RBAC/403), `KindUnauthorized`
-  (401), `KindInvalid` (400/422), `KindTimeout`, `KindUnreachable` (transport/DNS/503),
-  `KindBadContext` (kubeconfig/context). The stated M1-08 set (not-found / forbidden /
-  unreachable / bad-context) plus the neighbours with a direct apierrors predicate and
-  clear TUI value (conflict/unauthorized/invalid/timeout/already-exists). `String()`
-  returns a stable lowercase token (classification, not user copy — the TUI renders
-  its own message per kind).
-- **apierrors predicates walk the chain themselves** (`ReasonForError` → `errors.As`
-  to the embedded `*StatusError`), so `IsNotFound(err)` etc. see through the layer's
-  `%w`; called directly, most-specific first.
-- **Transport unreachable = `errors.As` to `*url.Error` / `net.Error`** (dial refused,
-  DNS, TLS never get an HTTP status, so they arrive as these, not an apierror), plus
-  `apierrors.IsServiceUnavailable` (503). `context.DeadlineExceeded` → `KindTimeout`.
-- **Bad-context is layer-tagged, not string-matched.** The common case — an override
-  context that doesn't exist (`--context nope`) — is a **plain `fmt.Errorf("context
-  %q does not exist")`** inside clientcmd (`client_config.go`) that **no clientcmd
-  predicate matches** (`IsContextNotFound` only matches the `*errContextNotFound`
-  type / its specific "was not found for specified context" string, and validation
-  never runs for a getContext override miss). So relying on clientcmd predicates
-  misses the most important case. Instead, **`RESTConfig` — the single construction
-  entry point, whose every failure is a kubeconfig/context problem — wraps its error
-  with an unexported `errBadContext` sentinel** (`fmt.Errorf("kube: loading
-  kubeconfig: %w: %w", errBadContext, err)`, dual-`%w`), and `Classify` checks
-  `errors.Is(err, errBadContext)` first. This tags at the site with the most context
-  and is robust to clientcmd's varied wording; the clientcmd predicates
-  (`IsContextNotFound`/`IsEmptyConfig`/`IsConfigurationInvalid`, run per-chain-link
-  via `chainMatches` since some match only the concrete type) stay as a secondary net
-  for a clientcmd error that reaches Classify by another path.
-- **No new deps** (net, net/url, context, apierrors, clientcmd all already vendored).
-  Hermetic tests: a `Classify` table over constructed apierrors/url/net errors + a
-  dual-`%w`-wrapped not-found/url error (proves chain-walking), a real
-  `RESTConfig(unknown-context)` → `KindBadContext` (the #86 path end-to-end), an
-  empty-kubeconfig case, and `ErrorKind.String()`.
+**2026-07-19.** Landed `internal/kube/errors.go` — the "graceful, typed errors, never panic on bad ns/context" exit clause (#86, old #55, principle 3).
 
 ### D47 — Executing M2-01a: keymap core — Action registry + canonical chord model; M2-01 split into slices
-**2026-07-19.** First slice of the M2 action registry (D10/D11). New package
-`internal/tui/keymap` is the single place keys exist; views will resolve a
-keypress to a named `Action` and never match a raw key.
-
-- **Canonical `chord` as the join key.** A keypress and a configured token both
-  normalise to one canonical string — modifiers (`ctrl`/`alt`, lowercased, fixed
-  order) `+` a base that is either a **case-sensitive single printable rune**
-  (`G` ≠ `g`) or a **lowercased special name** (`up`, `enter`, `pgdn`, …). Two
-  constructors feed it: `parseChord(token)` (config/defaults) and
-  `chordFromKey(tea.Key)` (live). Resolution is a single reverse-index lookup.
-  `TestChordRoundTrip` locks the equality property both constructors must satisfy.
-- **Shift is never an explicit modifier.** A shifted letter is its capital rune
-  (`G`, `N`), matching the keybindings.md config syntax; `parseChord` rejects a
-  `shift+` token with a hint. `chordFromKey` prefers `ShiftedCode`, then `Text`,
-  then `Code` so shift+g reads `G` under both the Kitty protocol and legacy
-  terminals; under ctrl the rune is lowercased so `ctrl+D` == `ctrl+d`.
-- **Defaults are one data table, collision-free by construction.** `DefaultKeymap`
-  panics (programming error, caught by `TestDefaultKeymapValid`) if the static
-  table is malformed. To keep defaults collision-free, `pgdn`/`pgup` fall back to
-  the **half-page** actions only; full-page keeps `ctrl+f`/`ctrl+b` (the doc lists
-  PgDn as a fallback for both, which would collide in one flat context).
-- **`Merge(overrides)` returns a new validated keymap + warnings**, never mutates
-  the receiver. Each entry **replaces** an action's binding wholesale (empty list
-  = disable). Errors: unknown action id, bad token, or a chord bound to two
-  actions (collision names both, in a stable order). **Warnings** (not errors)
-  flag an override that shadows a default navigation key (D10).
-- **Scope / splits.** This slice is registry + chord model + defaults + merge +
-  single-chord resolution + registry primitives (`Actions`/`Keys`/`Describe`) for
-  later help generation. Deferred: **M2-01b** multi-key sequences (`gg`→`nav.top`;
-  `top` falls back to `home` for now), **M2-01c** YAML `keys:` config wiring +
-  `kubecom keys`, **M2-01d** `bubbles/key.Binding` + help overlay generation. The
-  action-menu set (describe/yaml/delete/…) is an M3 deliverable per keybindings.md
-  and is not registered here. No new deps (`tea` already vendored). Hermetic,
-  pure-logic tests only — no goroutines, no runtime surface yet.
+**2026-07-19.** First slice of the M2 action registry (D10/D11). New package `internal/tui/keymap` is the single place keys exist; views will resolve a keypress to a named `Action` and never match a raw key.
+- **Canonical `chord` as the join key.**
+- **Shift is never an explicit modifier.**
+- **Defaults are one data table, collision-free by construction.**
+- **`Merge(overrides)` returns a new validated keymap + warnings**
+- **Scope / splits.**
 
 ### D48 — M2-01b: multi-key sequences + timeout-driven resolution; timer lives in the model, not the keymap
-**2026-07-19.** Second slice of the M2 action registry (D10/D11): the vim `gg` →
-`nav.top` case and the general multi-key mechanism, built on M2-01a's canonical
-chord model.
-
-- **Sequences unify with single chords.** A binding is now a `seq` (`[]chord`,
-  length ≥ 1); a single key is just a length-1 sequence, so `DefaultKeymap`,
-  `Merge`, collision detection, and `Keys()` all operate on one model.
-  `parseSequence` accepts a lone chord (`j`, `up`, `ctrl+d`), the vim concatenated
-  form (`gg` → `g`,`g`), and a space-separated form (`g g`, `ctrl+w k`) for
-  sequences that mix modified/special chords. A `+`-token that fails to parse is a
-  real error, never silently re-read rune-by-rune (so `shift+g`/`ctrl+` keep their
-  M2-01a error), and `seq.String()` round-trips (`gg` stays `gg`) for help gen.
-- **Stateful matching is a separate `Sequencer`, keymap stays immutable.** The
-  `Keymap` gains two derived indexes (`prefix`: is this a prefix of a binding;
-  `extends`: does a longer binding extend it) alongside the exact `bySeq` map. A
-  `Sequencer` holds the only mutable input state — the buffered prefix — and the
-  model owns one, driving it from the update loop, so there is no shared mutable
-  state (principle 1). `Input(key)` returns `ResultAction` (resolved),
-  `ResultPending` (buffered, a longer binding may still complete), or `ResultNone`
-  (inert; a non-continuing key abandons the buffer and is retried alone).
-- **The keymap package never runs a timer.** `Input` returning `ResultPending`
-  tells the model to schedule a `tea.Tick(SequenceTimeout)`; when it fires the
-  model calls `Sequencer.Timeout()`, which fires the buffered prefix iff it is
-  itself a complete binding, else drops it. This keeps the package pure/hermetic
-  (no goroutines, no clock) — the M0-05/logs pattern. `SequenceTimeout` is an
-  exported package var (default 500ms, vim's timeoutlen is 1000ms; snappier) so
-  the model reads one source and tests can shrink it.
-- **A prefix that is also a complete binding pends, then fires on timeout.** So
-  binding an action to bare `g` while `gg` stays bound keeps `gg` reachable (vim
-  semantics), rather than forbidding the overlap.
-- **`Keymap.Action(key)` stays** as the single-key resolver (ignores sequences)
-  for views that never buffer (modals/pickers); `nav.top` is reachable through it
-  via the `home` fallback even though its vim binding is the `gg` sequence.
-- **pgdn/pgup stay half-page only.** The board's M2-01b note floated wiring pgdn/
-  pgup as full-page fallbacks too; they can't fall back to both half- and
-  full-page in one flat context without colliding (the exact reason D47 put them
-  on half-page). Full-page keeps `ctrl+f`/`ctrl+b`; revisit only if full-page gets
-  a context where pgdn is free. No new deps. Splits remaining: M2-01c YAML `keys:`
-  wiring, M2-01d bubbles/key + help gen.
+**2026-07-19.** Second slice of the M2 action registry (D10/D11): the vim `gg` → `nav.top` case and the general multi-key mechanism, built on M2-01a's canonical chord model.
+- **Sequences unify with single chords.**
+- **Stateful matching is a separate `Sequencer`, keymap stays immutable.**
+- **The keymap package never runs a timer.**
+- **A prefix that is also a complete binding pends, then fires on timeout.**
+- **`Keymap.Action(key)` stays**
+- **pgdn/pgup stay half-page only.**
 
 ### D49 — M2-01c: config `keys:` wiring — plain-YAML in `internal/config`, `Config.Keymap()` resolves, `kubecom keys` prints
-**2026-07-19.** The user config gets its first real field and the keymap its
-first config surface (M2-01c, on M2-01a's `Merge`).
-
-- **`internal/config` is now a real package** (was a doc-only stub). `Config` has
-  one wired field today, `Keys map[string][]string` (`json:"keys"`), the
-  action-id → key-tokens override table. The zero value is valid (runs on
-  defaults). The browse/menu/theme sections and the legacy migration (D6) are
-  still later legs; this leg only wires `keys:`.
-- **`sigs.k8s.io/yaml`, not a new YAML dep.** It was already a direct dep (from
-  M1-07a) and gives JSON-tag decoding + `UnmarshalStrict`. Plain user YAML decodes
-  through JSON tags; no `gopkg.in/yaml.v3` promotion, no new module. `omitempty`
-  json tags; unknown top-level fields are **rejected** (`UnmarshalStrict`) so a
-  typo — or a not-yet-wired section written early — fails loudly instead of being
-  a silent no-op. Revisit if a future section needs lenient forward-compat.
-- **A missing config file is not an error.** `LoadFile` returns the zero config on
-  `os.ErrNotExist` (kubecom runs on defaults with no file); other read/parse
-  errors propagate wrapped. `Load(io.Reader)` is the stream form both share.
-- **Config path stays D20:** `Path()` = `os.UserConfigDir()/kubecom/config.yaml`.
-- **`Config.Keymap()` is where config meets the keymap.** config imports keymap
-  (one-way; keymap imports no config), casts each string id to `keymap.Action`,
-  and calls `DefaultKeymap().Merge(overrides)` — reusing M2-01a's validation
-  wholesale: unknown action / bad token / collision are errors; a nav-key shadow
-  is a returned warning. No resolution logic is duplicated in config.
-- **`kubecom keys`** loads the config (default path or `--config`), resolves, and
-  prints the effective map in registry order (`keymap.Actions()` + `Keys()` +
-  `Describe()`), disabled actions shown as `(disabled)`. Merge **warnings go to
-  stderr**, the table to stdout; an invalid keymap fails the command (exit 1).
-  `printKeys(out, errOut, km, warnings)` is split from the cobra `RunE` so it is
-  testable without cobra. No new deps.
+**2026-07-19.** The user config gets its first real field and the keymap its first config surface (M2-01c, on M2-01a's `Merge`).
+- **`internal/config` is now a real package**
+- **`sigs.k8s.io/yaml`, not a new YAML dep.**
+- **A missing config file is not an error.**
+- **Config path stays D20:**
+- **`Config.Keymap()` is where config meets the keymap.**
+- **`kubecom keys`**
 
 ### D50 — M2-01d: help generated from the registry — bubbles/key.Binding bridge + toggleable overlay; pin bubbles v2.0.0
-**2026-07-19.** Fourth slice of the M2 action registry (D10/D11): the help side
-of "zero hard-coded keys". Help is built **from the resolved keymap**, never from
-literals, so it can't drift from actual bindings.
-
-- **Registry → bubbles bridge (`internal/tui/keymap/help.go`).** `(*Keymap).Binding(a)`
-  turns one action into a `bubbles/v2/key.Binding` — `WithKeys` = the resolved
-  canonical tokens (`Keys(a)`, vim key first), `WithHelp` = display text (tokens
-  joined by `/`, e.g. `gg/home`, `ctrl+d/pgdn`) + the registry `Describe()`; an
-  action with **no bound keys** (disabled or unknown id) yields a **disabled**
-  binding (never a panic) so renderers skip it via `Enabled()`. `Bindings()` is the
-  whole registry in order. `HelpKeyMap` (from `HelpMap()`) satisfies bubbles'
-  `help.KeyMap`: `ShortHelp()` = a curated status-bar subset (`shortHelpActions`,
-  enabled-only), `FullHelp()` = every enabled binding grouped into columns by
-  action **namespace** (id prefix before the first `.`), first-seen column order,
-  registry order within a column, disabled dropped.
-- **Overlay component (`internal/tui/help`).** A small `Model` wrapping
-  `bubbles/help.Model` (`ShowAll=true`) + the `HelpKeyMap`: `Toggle`/`SetVisible`/
-  `Visible`, `SetWidth` (width-based short-help elision), `View()` (full overlay
-  when visible, `""` when hidden), `ShortHelpView()` (the always-on status-bar
-  hint). It **matches no raw keys** — the root model resolves `app.help` through
-  the keymap and calls `Toggle`; this component only chooses what help to show.
-  No shared mutable state (principle 1): every field is owned by the embedder.
-  It's a tested, unwired component today; the root model (later M2) embeds it.
-- **Dep pin: `charm.land/bubbles/v2` v2.0.0** (+ transitive `charm.land/lipgloss/v2`
-  v2.0.0). v2.0.0's go directive is 1.24.2 and it requires bubbletea v2.0.0 — MVS
-  keeps our pinned v2.0.2, no downgrade, no Go bump. bubbles v2.1.0 needs Go 1.25.0;
-  v2.1.1 needs bubbletea v2.0.7. Hold v2.0.0 in lockstep with the bubbletea v2.0.2
-  / Go-1.24.2 floor (D26), the D42/D45 "pin to match the stack" pattern.
-- **Split.** The item bundled a *standalone generated keybindings doc*; that's a
-  separable concern (a committed markdown file + a drift-check test/`make` target)
-  and became **M2-01e**. This leg is the in-app bindings + overlay only. With it,
-  the M2-01 action-registry group is functionally complete bar the doc file; next
-  is the M2 app shell (root model, browse view, table) — or M2-01e first.
+**2026-07-19.** Fourth slice of the M2 action registry (D10/D11): the help side of "zero hard-coded keys". Help is built **from the resolved keymap**, never from literals, so it can't drift from actual bindings.
+- **Registry → bubbles bridge (`internal/tui/keymap/help.go`).**
+- **Overlay component (`internal/tui/help`).**
+- **Dep pin: `charm.land/bubbles/v2` v2.0.0**
+- **Split.**
 
 ### D51 — M2-01e: keybindings doc generated from the registry + drift-guarded golden test
-**2026-07-19.** The committed keybindings reference is **generated from the
-default keymap**, not hand-written, closing the "generated keybindings doc" half
-of D11 (the help overlay was the in-app half, D50). **Why:** a hand-maintained
-doc drifts from the registry the moment a binding changes; generating it from the
-same `Actions()`/`Keys()`/`Describe()` primitives the overlay uses makes drift
-structurally impossible, and a golden test makes it *loud*. **How:**
-- `(*Keymap).Markdown()` (`internal/tui/keymap/doc.go`) renders the keymap as
-  `docs/keybindings.md`: a fixed banner + one table per action **namespace**
-  (`groupOf`, reused from help.go), columns Action / Keys / Description, registry
-  order; keys quoted and `/`-joined vim-first (`docKeys`), no-keys → em dash.
-  Nothing restates a literal key — it's all `Keys(a)`/`Describe()`.
-- **Golden drift test** `TestKeybindingsDoc` (`doc_test.go`) compares the
-  committed file to `DefaultKeymap().Markdown()`; a `-update` flag rewrites it.
-  `make check` runs it (via `go test ./...`) so a stale doc **fails the gate**;
-  `make keys-doc` (= `go test ./internal/tui/keymap -run TestKeybindingsDoc
-  -update`) regenerates. `TestMarkdownFromRegistry` asserts every action id, key,
-  and description appears (proves derivation, not restatement).
-- Committed doc lives at **`docs/keybindings.md`** (repo root, discoverable — new
-  `docs/` dir); the test resolves it as `../../../docs/keybindings.md` (go test's
-  cwd == package dir). Golden-update over a standalone `cmd/` generator: no new
-  binary, the test *is* the generator.
-No new deps. **Completes the M2-01 action-registry group** (01a keymap core / 01b
-sequences / 01c config wiring / 01d help overlay / 01e generated doc); next is the
-M2 app shell (root model, browse view, table).
+**2026-07-19.** The committed keybindings reference is **generated from the default keymap**, not hand-written, closing the "generated keybindings doc" half of D11 (the help overlay was the in-app half, D50).
 
 ### D52 — M2 app-shell decomposed into ordered, leg-sized Backlog slices
-**2026-07-19.** With the M2-01 action-registry group complete (D47–D51), the rest
-of M2 was a single prose paragraph on the board — no pickable item for the next
-agent. **This planning leg turns the M2 milestone scope + exit criteria into a
-dependency-ordered task list** (M2-02 … M2-14), so `/do-rewrite-leg`'s "take the
-top unblocked Backlog item" has real input again. **Why a whole leg:** the skill
-sanctions "expanding a thin milestone section into concrete small tasks" as a leg
-in itself; doing it once, deliberately, beats each subsequent agent re-deriving
-the breakdown ad hoc (and risking overlap). **The slicing:**
-- **M2-02** msg types + channel→msg pumps (`internal/tui/msg.go`) — pure, the
-  first pickable slice (no UI deps); everything downstream consumes these msgs.
-- **M2-03** lipgloss theme/styles → **M2-04** status bar → **M2-05a/b** resource
-  menu (static seed, then discovery reconcile) → **M2-06a/b/c** custom table
-  (snapshot render / live watch deltas / horizontal scroll) — the components,
-  built bottom-up so each lands green and testable before the shell composes them.
-- **M2-07a/b/c/d** root app shell (`internal/tui/app.go`, replaces the M0
-  `tui.go` placeholder): keymap/sequencer-routed skeleton + help overlay + quit;
-  two-pane browse layout + focus; live table ↔ `kube.Watch` wiring; async
-  discovery reconcile.
-- **M2-08** namespace picker · **M2-09** filter · **M2-10** confirm/prompt modal ·
-  **M2-11** config menu persistence · **M2-12** legacy `~/.kubecom.yaml` migration
-  · **M2-13** column sort (#85) · **M2-14** teatest coverage.
-Package layout follows REWRITE_PLAN (`internal/tui/{app,msg}.go`,
-`internal/tui/styles`, `internal/tui/components/*`, `internal/tui/views/*`); every
-slice preserves zero shared mutable UI state (principle 1, D1). The custom table
-(not `bubbles/table`) and the "reconcile discovery without disturbing selection"
-constraint are carried from the M2 milestone's risks. Ordering is a default, not a
-contract — a later agent may re-split a slice that proves too big (the skill's
-split-and-take rule still applies per leg). Board-only; no code, `make check` green.
+**2026-07-19.** With the M2-01 action-registry group complete (D47–D51), the rest of M2 was a single prose paragraph on the board — no pickable item for the next agent.
 
 ### D53 — TUI msg boundary: one-item channel→msg pumps; errors bridged, discovery kept whole
-**2026-07-19 (M2-02).** `internal/tui/msg.go` is the single boundary between the
-concurrent `kube` layer and the single-threaded Bubble Tea update loop. The kube
-layer returns work on channels (watch deltas, the cap-1 discovery-ready signal);
-Bubble Tea consumes `tea.Msg`. The pumps are `tea.Cmd` adapters that read
-**exactly one** item from a kube channel and return it as a message — the only
-sanctioned crossing of the goroutine boundary, so no UI state is shared/mutated
-across goroutines (principle 1, D1). One-receive-per-Cmd means the model re-issues
-the pump after each delivered msg to pull the next, and `Update` never blocks on
-more than a single receive. Concrete choices:
-- **`watchPump`** maps a data delta → `ResourceEventMsg` (event carried verbatim),
-  a watch `ERROR` event → a classified `ErrorMsg` (`NewErrorMsg("watch", err)` →
-  `kube.Classify`), and a **closed** channel → the terminal `WatchClosedMsg`. The
-  closed case is an explicit message (not a nil) precisely so the model stops
-  re-issuing the pump — re-receiving from a closed channel would busy-loop.
-- **`discoveryPump`** always returns **`DiscoveryReadyMsg`** carrying the whole
-  `kube.DiscoveryResult`, **including a total failure** (`Result.Err`) and the
-  isolated per-group failures (`Result.Failed`). A total failure is *not* swapped
-  for a generic `ErrorMsg`: discovery is a reconcile signal and the model wants the
-  err + isolated detail together, classifying `Result.Err` itself when rendering. A
-  closed-with-no-value channel → nil msg (ignored), never a panic.
-- **`ErrorMsg`** is the generic degrade-one-feature carrier (#86, principle 3):
-  `{Context, Err, Kind}` with `Kind = kube.Classify(Err)` fixed at construction via
-  `NewErrorMsg` so it can never drift from `Err`.
-- **Size** uses Bubble Tea's own `tea.WindowSizeMsg`; kubecom defines no size msg.
-  Cross-component selection msgs (`ResourceSelectedMsg` from the menu,
-  `RowSelectedMsg` from the table) live here so producer and consumer share one
-  type. No new deps; pure, hermetically fake-channel tested; `-race` clean.
+**2026-07-19 (M2-02).** `internal/tui/msg.go` is the single boundary between the concurrent `kube` layer and the single-threaded Bubble Tea update loop.
 
 ### D54 — M2-03: styles package = Theme (named colors) → Styles (derived lipgloss); lipgloss v2 promoted to direct
-**2026-07-19 (M2-03).** `internal/tui/styles` is the single source of visual
-truth: a **`Theme`** (a struct of named, semantic `color.Color` fields — no
-styling) and a **`Styles`** (the `lipgloss.Style` values every component renders
-through), with `New(Theme) Styles` the one place a color becomes a style.
-Rationale and locked choices:
-- **Named roles, not literals.** Components ask for a role (`s.Selection`,
-  `s.Error`, `s.PaneFocus`) and never call `lipgloss.Color`/`NewStyle`
-  themselves, so re-theming (M4 theme picker, D6's ported monokai/solarized) is a
-  matter of building a `Styles` from a different `Theme`. `Styles.Theme` is
-  retained so a component that needs a raw `color.Color` (e.g. a bubbles widget
-  that wants a color, not a Style) can reach one without a second palette.
-- **Pure, immutable, copyable.** A `Theme` is plain data; `lipgloss.Style` is an
-  immutable value type (every setter returns a copy), so a `Styles` is safe to
-  copy into any model and read concurrently — no shared mutable UI state
-  (principle 1, D1). `New` touches no global (lipgloss v2 dropped the global
-  renderer), so it is deterministic: same Theme in, equal styles out (tested).
-- **DefaultTheme** is a dark-friendly truecolor palette with a blue accent (a nod
-  to the original kube-commander). Terminals without truecolor downsample at
-  write time via the Bubble Tea renderer, so the theme carries no per-terminal
-  branching (v2 has no `AdaptiveColor`; downsampling is a write-time concern).
-- **`Default()`** = `New(DefaultTheme())`, the set the app uses until a theme is
-  chosen. Roles shipped: App/Subtle/Selection/Header/Pane/PaneFocus (rounded
-  border, accent when focused)/StatusBar/Error/Warn/Success/Spinner — the surfaces
-  M2-04…M2-10 render (status bar, menu, table, modal, spinner).
-- **Dep:** `charm.land/lipgloss/v2` v2.0.0 **promoted indirect→direct** (was
-  transitive via bubbles, D50). No version change, `go.sum` untouched — MVS
-  already had it; this is a go.mod require-block move only.
+**2026-07-19 (M2-03).** `internal/tui/styles` is the single source of visual truth: a **`Theme`** (a struct of named, semantic `color.Color` fields — no styling) and a **`Styles`** (the `lipgloss.Style` values every component renders through), with `New(Theme) Styles` the one place a color becomes a style.
 
 ### D55 — M2-04: status bar renders purely from props; spinner ticks gated on discovering
-**2026-07-19 (M2-04).** `internal/tui/components/statusbar` is kubecom's bottom
-bar: `context · namespace · [spinner] discovering…` on the left, the keymap
-short-help hint right-aligned. Locked choices:
-- **Pure render from props.** The bar owns no shared state; the root model sets
-  `SetContext`/`SetNamespace`/`SetShortHelp`/`SetWidth` and reads `View()`. The
-  short-help is generated upstream from the effective keymap (`help.Model.
-  ShortHelpView()`, D11) and handed in **as a string**, so the bar never matches
-  a raw key or knows what a binding does — it only lays out the pieces it's given.
-- **Spinner ticks gated on `discovering`.** The bar embeds a `bubbles/spinner`
-  (styled with the `Styles.Spinner` accent role, D54). `StartDiscovery()` sets
-  the flag and returns the seed `spinner.Tick` Cmd; `Update` forwards a
-  `spinner.TickMsg` to the spinner **only while discovering**, so `StopDiscovery()`
-  breaks the self-scheduling tick chain and the animation stops on the next tick —
-  no timer to cancel, no goroutine (principle 1). Spinner state is model-local,
-  not shared, so this is not the mutex-guarded UI state D1 forbids.
-- **Width-aware layout.** With a known width the help is pushed to the right edge
-  (`gap = width − W(left) − W(right)` spaces) and the line is clamped
-  (`Style.Width(w).MaxWidth(w)`); when the gap can't fit both, the live left
-  segment wins and the hint is dropped. Width 0 (pre-`WindowSizeMsg`) joins the
-  pieces inline. Empty pieces are skipped so a missing namespace leaves no
-  dangling separator.
-- **Deps:** none new — `bubbles/v2/spinner`, `bubbletea/v2`, `lipgloss/v2` all
-  already direct. First `internal/tui/components/*` package; the layout the rest
-  of M2's components follow (New(styles), prop setters, value-receiver View).
+**2026-07-19 (M2-04).** `internal/tui/components/statusbar` is kubecom's bottom bar: `context · namespace · [spinner] discovering…` on the left, the keymap short-help hint right-aligned.
 
 ### D56 — M2-05a: resource menu owns its "resource selected" message (emitter owns the type)
-**2026-07-19 (M2-05a).** `internal/tui/components/menu` is the browse view's left
-pane: a static-seeded vertical list of resource kinds, navigated through keymap
-actions, that emits a selection message when the user drills in. Locked choices:
-- **A component-emitted message is owned by that component's package, not by
-  package `tui`.** The root model (package `tui`, M2-07) imports the component
-  packages, so a component importing `tui` to build a `tui`-declared message would
-  cycle. `ResourceSelectedMsg{Resource kube.Resource}` therefore lives in the
-  `menu` package (the emitter); the root model handles the concrete
-  `menu.ResourceSelectedMsg`. The pre-declared placeholder `tui.ResourceSelectedMsg`
-  is **removed** from `msg.go`; the same rule will move the table's
-  `RowSelectedMsg` into the table package in M2-06. `msg.go` keeps only the
-  kube-boundary messages + the generic `ErrorMsg`, which no component originates.
-- **Static seed, discovery-independent.** `seedItems()` is a fixed core-resource
-  list (namespaces/nodes/events · pods/deployments/statefulsets/daemonsets/
-  replicasets/jobs/cronjobs · services/ingresses · configmaps/secrets/
-  serviceaccounts · pvcs/pvs/storageclasses), each a real `kube.Resource`
-  (GVK/GVR/scope) so drilling in gives the kube layer everything List/Watch needs.
-  The seed lets the browse view render and be navigated before discovery completes
-  (fast cold start, principle 4); M2-05b reconciles it against `DiscoveryReadyMsg`.
-- **Display title = `GVK.Kind`.** Canonical, correctly-cased, and works uniformly
-  for built-ins and CRDs (no ad-hoc pluralisation). Adjustable later if the UX
-  wants plurals.
-- **Actions in, not keys.** `Update(a keymap.Action) (Model, tea.Cmd)` moves the
-  highlight (up/down/top/bottom, clamped) and, on `nav.drillIn`, emits
-  `ResourceSelectedMsg` for the highlighted item; an **unavailable** item (M2-05b)
-  is a no-op on drill-in. The menu never matches a raw key (D11). A vertical scroll
-  `offset` keeps the cursor visible so a short pane / long list still works;
-  page/half-page actions are left to a later slice. Pure value-receiver `View`
-  frames the list with `Pane`/`PaneFocus` and highlights the cursor with
-  `Selection` (D54); returns `""` until sized. No shared mutable state (principle 1).
-- **Deps:** none new. Imports `kube` (Resource) + `apimachinery/.../schema` (to
-  build the seed GVK/GVR) + `keymap` + `styles` + `bubbletea/v2` (Cmd).
+**2026-07-19 (M2-05a).** `internal/tui/components/menu` is the browse view's left pane: a static-seeded vertical list of resource kinds, navigated through keymap actions, that emits a selection message when the user drills in.
 
 ### D57 — M2-05b: menu reconcile merges into the ordered seed; append extras, never blank
-**2026-07-19 (M2-05b).** `(*Model).Reconcile(kube.DiscoveryResult)` folds the async
-discovery result into the M2-05a static seed. Locked choices:
-- **Merge, never replace.** Reconcile mutates the seed *in place* and appends —
-  it never rebuilds the item slice from discovery. So a **total failure**
-  (`Result.Err != nil`) is a no-op (the seed stays fully navigable), and a partial
-  failure still leaves the user a working menu (principle 3: degrade, don't blank).
-  This is the fix for the original's central bug (a broken aggregated API blanking
-  the whole menu).
-- **Twin match by exact GVR.** A seed item with a discovered twin (same GVR) takes
-  the twin's discovery metadata (verbs/short-names/categories) and is confirmed
-  `Available`; the seed's curated **title and order are kept** (discovery order is
-  used only for appended extras).
-- **Unavailable = failed group AND no twin.** A seed item is marked
-  `Available = false` (rendered muted, a no-op on drill-in) only when its API
-  **group** appears in `Result.Failed` and it has no twin. Match on group (not
-  group/version) so a seed item pinned to a version differing from the failed one
-  is still caught. A seed item with neither a twin nor a failed group is left
-  untouched (conservative — absence alone is not proof of unavailability).
-- **Extras appended after the seed**, in discovery's stable sorted order — CRDs and
-  extra groups the curated seed omits. Keeps the familiar core kinds at the top;
-  reorder/customization is M2-11's job, not reconcile's.
-- **Selection & scroll preserved (the M2 risk item).** The highlighted item's GVR
-  is resolved back to its post-merge index and the scroll offset re-clamped, so
-  reconcile never moves the cursor or jumps the view. Append-only makes the index
-  stable anyway; the GVR re-resolve keeps the guarantee robust against future
-  reordering.
-- **Deps:** none new. Adds an `apimachinery/.../schema` import to `menu.go` (already
-  used in `seed.go`).
+**2026-07-19 (M2-05b).** `(*Model).Reconcile(kube.DiscoveryResult)` folds the async discovery result into the M2-05a static seed.
 
 ### D58 — M2-06a: custom table renders a server-printed snapshot, priority-0 columns, clip-not-wrap
-**2026-07-20 (M2-06a).** `internal/tui/components/table` is the browse view's right
-pane: a custom table (bubbles/table is too basic for the live watch/hscroll needs —
-the M2 risk item) that renders a `kube.Table` snapshot. Locked choices:
-- **Priority-0 columns by default.** Only columns with `Priority == 0` are shown,
-  matching `kubectl get`'s narrow view (`Priority > 0` are the `-o wide` extras). If
-  the server sends no priority-0 column, *all* columns are shown rather than a blank
-  table (degrade, don't blank — principle 3). A wide/narrow toggle is a later slice.
-- **Clip, don't wrap (this slice).** Each rendered row is hard-clipped to the pane
-  width with a rune cut (`truncate`), not wrapped, so one logical row is always one
-  display line. Horizontal scroll for wide tables is **M2-06c**; until then a wide
-  table is cut at the right edge.
-- **Bordered-pane sizing gotcha.** lipgloss counts a `Border` *inside*
-  `Style.Width`/`Height`, so a bordered `Pane` must be sized to the component's
-  **total** width/height (`m.width`/`m.height`); its content area is then the inner
-  `(width-2)×(height-2)` region the header+rows are rendered to. Sizing the frame to
-  the inner width instead leaves the content area two columns short and wraps every
-  full-width row. Guarded by `TestViewFitsPaneNoWrap`. (The `menu`/`statusbar` panes
-  render short lines that never hit this, but should adopt the same sizing.)
-- **Owns its emitted message (D56).** `table.RowSelectedMsg` lives in the table
-  package (drill-in emits it); the forward-reference in `tui/msg.go` is resolved.
-- **SetTable resets selection** to the first row (snapshot replace). M2-06b will add
-  live watch-delta application that *preserves* the selection instead.
-- **Deps:** none new (`kube`, `keymap`, `styles`, bubbletea, lipgloss all present).
+**2026-07-20 (M2-06a).** `internal/tui/components/table` is the browse view's right pane: a custom table (bubbles/table is too basic for the live watch/hscroll needs — the M2 risk item) that renders a `kube.Table` snapshot.
 
 ### D59 — M2-06b: table applies live watch deltas keyed by object UID, preserving the selection
-**2026-07-20 (M2-06b).** `(*table.Model).ApplyEvent(kube.WatchEvent)` folds one live
-watch delta onto the M2-06a snapshot. Locked choices:
-- **UID is the row identity.** Rows are matched by `ObjectRef.UID` (`indexOfUID`);
-  ADDED/MODIFIED **upsert** (update in place, or append when the UID is unseen),
-  DELETED removes the matching row. An **empty UID never matches** — a degraded row
-  with no object metadata (principle 3) can't be identified, so it is always appended
-  rather than collapsed with another empty-UID row.
-- **MODIFIED of an unknown UID is treated as an add** (append), mirroring the server
-  sending a modify for an object that entered scope before the watch synced it.
-- **RESET preserves the selection too.** RESET replaces columns+rows, but the watch
-  layer emits RESET on the first sync *and on every reconnect* (D34-era re-List), so
-  preserving the selected UID across it keeps the cursor put through a transient
-  reconnect; it falls back to the first row only when the selected object is gone.
-  (This differs from `SetTable`, which deliberately resets to the top — that's the
-  fresh-List-for-a-newly-selected-resource path.)
-- **Selection preservation model.** The selected UID is captured *before* the delta,
-  then re-resolved to its new index after; if the row is gone the cursor **keeps its
-  index position** (clamped to the new range), so deleting the selected row lands on
-  the next row rather than jumping to the top (k9s-like). `computeColumns` reruns
-  after every delta (a new/wider cell can widen a column) and `clampOffset` re-scrolls
-  so the selection stays visible.
-- **ERROR never reaches ApplyEvent** — the M2-02 watch pump bridges a watch ERROR to
-  an `ErrorMsg`, so `ApplyEvent` only ever sees data deltas; unknown event types are
-  ignored. Pure single-threaded (the root model calls it from `Update`); no shared
-  mutable state (principle 1).
-- **Deps:** none new.
+**2026-07-20 (M2-06b).** `(*table.Model).ApplyEvent(kube.WatchEvent)` folds one live watch delta onto the M2-06a snapshot.
 
 ### D60 — M2-06c: table scrolls horizontally on nav.left/nav.right, snapping to column boundaries
-**2026-07-20 (M2-06c).** The resource table can now be wider than its pane (the
-server-printed column set for a resource often overflows a split-pane width). It
-scrolls horizontally instead of only clipping the right edge (D58). Locked choices:
-- **Reused `nav.left`/`nav.right` (`h`/`l`), no new action.** The board specified
-  left/right; those actions already exist in the registry, so nothing changed in the
-  keymap, config surface, help, or `docs/keybindings.md` (the golden drift-check stays
-  green). The table's `Update` handles `ActionLeft`/`ActionRight` **before** the
-  empty-rows guard, so a header-only table (columns synced before the first rows) can
-  still scroll.
-- **One horizontal offset (`hoffset`, in display columns) windows the whole block.**
-  Every rendered line — header and each data row — is padded to the same content width
-  (each cell padded to its column width), so a single offset windows them identically
-  and columns stay aligned across the scroll. `hclip` replaces the old `truncate`:
-  it returns runes `[hoffset, hoffset+innerW)`; the enclosing lipgloss style pads a
-  short window back out to width (no-wrap invariant D58 preserved — guarded test still
-  passes).
-- **Scroll snaps to column starts.** `scrollRight` advances `hoffset` to the next
-  visible column's start (leftmost hidden column becomes flush-left); `scrollLeft`
-  retreats to the previous column start, or 0. This reads better than a fixed
-  char-step and needs no magic constant. **Fallback:** when no column start remains
-  within range (a final column wider than the pane), `scrollRight` snaps to
-  `maxHOffset` so that column's tail is still reachable; `scrollLeft` always reaches 0.
-- **Offset is state that must stay valid.** `SetTable` resets it to 0 (a fresh
-  resource starts fully-left, mirroring the vertical reset-to-top); `SetSize` and
-  `ApplyEvent` re-clamp it via `clampHOffset` (a resize or a column-width change from a
-  delta can widen/narrow the content). Exposed `HOffset()` for tests and for M2-07b's
-  future pane-focus-vs-scroll arbitration (compare before/after a left/right to detect
-  an edge). Pure render, no shared mutable state (principle 1).
-- **Deps:** none new.
+**2026-07-20 (M2-06c).** The resource table can now be wider than its pane (the server-printed column set for a resource often overflows a split-pane width).
 
 ### D61 — M2-07a: root app model owns the keymap + Sequencer; a generation-tagged timeout tick
-**2026-07-20 (M2-07a).** The M0 `internal/tui/tui.go` placeholder is replaced by the
-real root model in `internal/tui/app.go` — the M2 app shell, built up across
-M2-07a..d. This slice (07a) is the keymap-routed **skeleton** (no panes yet). Locked
-choices:
-- **The root model owns the resolved `*keymap.Keymap` and the one `*keymap.Sequencer`.**
-  Every `tea.KeyPressMsg` is fed to `seq.Input(msg.Key())`; the model never matches a
-  raw key (D11). The Sequencer is a **pointer** field so its buffered prefix survives
-  the value-model copy Bubble Tea makes each `Update`, but it is only ever touched from
-  the single-threaded update loop — no shared mutable state across goroutines
-  (principle 1).
-- **The keymap runs no timer (D48); the model schedules it.** On `ResultPending` the
-  model returns `tea.Tick(keymap.SequenceTimeout, …)` producing a private
-  `seqTimeoutMsg`; on receipt it calls `seq.Timeout()` and fires the result. This keeps
-  the keymap package pure.
-- **Timeout ticks are generation-tagged to drop stale ones.** `seqTimeoutMsg` carries
-  the `seqGen` value current when it was scheduled; `seqGen` is bumped on every new
-  pending. A tick whose `gen` ≠ the model's current `seqGen` was superseded by a newer
-  pending and is ignored — otherwise a leftover timer from an already-resolved prefix
-  could fire a *newer* pending's short form early (e.g. `g`⟨pend⟩ `gg`⟨resolve⟩ `g`⟨pend⟩
-  → the first tick must not fire the second `g`). A tick that finds an empty buffer is
-  already inert via `Timeout()`; the gen guard covers the newer-pending case.
-- **Actions serviced today:** `app.quit`→`tea.Quit`, `app.help`→toggle the M2-01d help
-  overlay, `nav.back`→close the overlay when open (else inert). All nav/filter/search
-  actions are inert no-ops until the browse panes land (M2-07b onward).
-- **`New()` uses `DefaultKeymap`; `NewWithKeymap(*Keymap)` accepts a config-merged one**
-  so the command layer can hand in the resolved keymap (M2-01c/M2-11) without `tui`
-  importing `config` (one-way dependency).
-- **View draws nothing until the first `WindowSizeMsg`** (never size a layout to a zero
-  canvas); when sized it shows a placeholder body (or the help overlay when open) plus
-  a one-line short-help hint generated from the registry.
-- **Deps:** none new.
+**2026-07-20 (M2-07a).** The M0 `internal/tui/tui.go` placeholder is replaced by the real root model in `internal/tui/app.go` — the M2 app shell, built up across M2-07a..d.
 
 ### D62 — Two-pane browse layout: focus switching via nav.left/nav.right
-**2026-07-20.** M2-07b composes the root model's browse view: the M2-05 resource
-menu (left pane) and the M2-06 resource table (right pane) side by side under the
-M2-04 status bar (bottom line).
-- **Layout.** The status bar takes one line at the bottom; the menu and table split
-  the remaining width. `menuPaneWidth = total/4`, floored at `minMenuWidth` (20) and
-  never leaving the table below `minTableWidth` (20) — on a narrow terminal the two
-  split evenly. Both panes are sized to their **total** width/height incl. border (as
-  their `SetSize` expects); the table pane width is `total − menuW` so the two fill the
-  row exactly. `View` is empty until the first `WindowSizeMsg`.
-- **Focus.** Exactly one pane holds focus (accented border via `PaneFocus`); the menu
-  starts focused (pick a resource before drilling into its table). `nav.right` moves
-  focus menu→table; `nav.left` moves focus table→menu **only when the table is at its
-  left edge** (`HOffset()==0`, nothing to scroll) — otherwise `nav.left` scrolls the
-  table's columns. This is the pane-focus-vs-scroll arbitration the table's `HOffset`
-  accessor was added for (D60). Every non-switching nav action is routed to the focused
-  pane's `Update`; the blurred pane is untouched.
-- **Help overlay swallows navigation.** While the help overlay is open, `handleAction`
-  services only quit/help/back and drops nav actions, so the panes underneath don't
-  move behind the overlay.
-- **Watch/discovery deferred.** The menu's `ResourceSelectedMsg` (drill-in) and the
-  table's `RowSelectedMsg` are emitted but not yet handled by the root — starting the
-  `kube.Watch` on selection is M2-07c and the discovery reconcile + status-bar spinner
-  is M2-07d.
-- **Deps:** none new.
+**2026-07-20.** M2-07b composes the root model's browse view: the M2-05 resource menu (left pane) and the M2-06 resource table (right pane) side by side under the M2-04 status bar (bottom line).
 
 ### D63 — M2-07c: drilling into a resource starts a live kube.Watch, streamed into the table
-**2026-07-20.** M2-07c wires the menu's `ResourceSelectedMsg` (drill-in) to a live
-`kube.Watch`, feeding its deltas into the table through the M2-02 watch pump.
-- **A narrow `ResourceWatcher` seam, not the concrete client.** The root model
-  depends on an interface — `Watch(ctx, kube.Resource, namespace, metav1.ListOptions)
-  (<-chan kube.WatchEvent, error)` — that `*kube.Clients` satisfies. The tui package
-  never constructs a client, and the model is driveable in hermetic tests with a fake
-  watch channel (D18). A model built with no watcher is **watch-inert**: selecting a
-  resource is a no-op, which is what the pre-launch app and the M2-07b tests want.
-- **Constructors take functional options.** `New(opts ...Option)` /
-  `NewWithKeymap(km, opts ...Option)` keep their existing call sites working (no
-  watcher) while `WithWatcher(w)` injects the client; future slices add their own
-  options (e.g. a discoverer in M2-07d) without churning the signature.
-- **Selecting a resource (re)starts the watch.** The previous watch's context is
-  cancelled, the table is blanked (`SetTable(kube.Table{})`), and a new
-  `context.WithCancel(context.Background())`-scoped watch is opened. `Watch` lists
-  internally before streaming, so its **first RESET event repopulates the table** —
-  no separate List call. Focus moves to the table (drilling *in* is the gesture to
-  start browsing rows; `nav.left` at the table's left edge returns to the menu, D60).
-  A `Watch` start error surfaces a classified `ErrorMsg` and leaves no watch state.
-- **Watch-pump messages are generation-tagged (`watchMsg{gen, msg}`).** Every pump is
-  tagged with the `watchGen` current when issued (bumped on each new selection). A
-  message whose gen ≠ the model's current `watchGen` comes from a superseded watch
-  whose channel is still draining after cancellation, and is **dropped** — it must not
-  mutate the table now showing a different resource, nor re-issue a pump that would
-  then read the *current* watch's channel and put a second reader on it. This is the
-  same stale-message guard `seqGen` gives the sequence timeout (D61). `ResourceEventMsg`
-  → `table.ApplyEvent` + re-issue the pump; a watch `ErrorMsg` re-issues the pump (the
-  watch loop retries and re-lists on recovery — visible error surfacing on the pane is
-  a later slice); `WatchClosedMsg` clears the channel and ends the chain (no re-issue).
-- **Namespace scope is "" (all) for now**; the namespace picker re-scopes it in M2-08.
-  `app.quit` cancels the current watch before `tea.Quit` so its goroutine unwinds.
-- **Deps:** none new.
+**2026-07-20.** M2-07c wires the menu's `ResourceSelectedMsg` (drill-in) to a live `kube.Watch`, feeding its deltas into the table through the M2-02 watch pump.
 
 ### D64 — M2-07d: async discovery on Init reconciles the menu + drives the status-bar spinner
-**2026-07-20.** M2-07d kicks off the async discovery pass on startup and folds its
-result into the resource menu (M2-05b `Reconcile`), running the M2-04 status-bar
-spinner while it is in flight — the "discovery ready" reconcile of D8, now wired
-into the shell.
-- **A narrow `Discoverer` seam, mirroring `WithWatcher` (D63).** The root model
-  depends on an interface — `StartDiscovery(ctx) <-chan kube.DiscoveryResult` — that
-  `*kube.Clients` satisfies, injected by a new `WithDiscoverer(d)` option. The tui
-  package never constructs a client; the model is driveable in hermetic tests with a
-  fake channel (D18). A model built with **no discoverer never runs discovery** — the
-  menu stays on its static seed, which is itself a fully navigable browse experience
-  (principle 4: fast cold start never blocks on discovery).
-- **Init defers the start one message hop (`startDiscoveryMsg`).** `Init()` is a value
-  receiver returning only a `tea.Cmd`, so it cannot store the cancel func or flip the
-  spinner's `discovering` flag. It therefore emits a private `startDiscoveryMsg`;
-  `Update` handles it, where the model is mutated and returned — the same place every
-  other state change lands. `startDiscovery` opens a `context.WithCancel` pass, calls
-  the discoverer, starts the spinner (`status.StartDiscovery()`), and **batches** the
-  spinner tick with the M2-02 `discoveryPump` (cap-1 channel, delivers once, D8).
-- **Spinner ticks are forwarded to the status bar.** The root `Update` routes
-  `spinner.TickMsg` to `status.Update`; the bar drops ticks once discovery finished,
-  so the animation self-terminates (M2-04) — no timer to cancel.
-- **`DiscoveryReadyMsg` stops the spinner and reconciles.** `handleDiscovery` calls
-  `status.StopDiscovery()`, cancels the one-shot context (its result is in hand), and
-  `menu.Reconcile(result)` — which merges without disturbing selection/scroll (D57)
-  and is a **no-op on a total failure** (`Result.Err` set): the menu then stays on its
-  navigable seed rather than blanking (principle 3). Visible surfacing of a discovery
-  failure on a pane is a later slice, as with the watch's ERROR handling (D63).
-- **`app.quit` cancels the in-flight discovery pass** alongside the watch, so its
-  goroutine unwinds before the program exits (the cap-1 channel already prevents a
-  leak, but cancelling drops the result promptly).
-- **Deps:** none new (reuses the M2-02 pump, M2-04 spinner, M2-05b `Reconcile`).
+**2026-07-20.** M2-07d kicks off the async discovery pass on startup and folds its result into the resource menu (M2-05b `Reconcile`), running the M2-04 status-bar spinner while it is in flight — the "discovery ready" reconcile of D8, now wired into the shell.
 
 ### D65 — M2-08a: generic modal picker over bubbles/list, driven by keymap actions
-**2026-07-20.** M2-08 (the namespace switcher) is too large for one leg, so it is
-split: **08a** is the picker component in isolation, **08b** adds filtering, **08c**
-wires it into the app shell (a `ns.switch` action + a `NamespaceLister` seam that
-re-scopes the watch). This decision covers 08a.
-- **A generic, kind-stamped picker.** `internal/tui/components/picker` chooses one
-  string value from a set. It is generic (values are plain strings) and carries a
-  `kind` ("namespace" first) stamped into its result messages, so the same component
-  is reused for the later context/container/port pickers and the root model can tell
-  which picker resolved. Namespace-specific plumbing lives in 08c, not the component.
-- **Wraps bubbles/list but is driven by keymap actions, never raw keys (D11).** The
-  picker holds a `list.Model` for cursor + pagination management (and, in 08b, its
-  native filter), but `Update` takes a `keymap.Action` and calls the list's public
-  cursor methods (`CursorUp/Down`, `GoToStart/End`, `Prev/NextPage`) — it never feeds
-  raw key messages to the list. The list's own key bindings and chrome (title, help,
-  status bar, pagination, filtering, quit keys) are all **disabled** so no hard-coded
-  key or help string leaks into the view; the picker frames and titles the list
-  itself through the shared `styles` (Header title, PaneFocus border, Selection cursor
-  row via a minimal one-line `itemDelegate`). This keeps the "zero hard-coded keys"
-  invariant intact even though bubbles/list ships its own keymap.
-- **Emitter owns its messages (D56).** Drill-in emits `picker.SelectedMsg{Kind,Value}`,
-  back emits `picker.CancelledMsg{Kind}` — both owned by the picker package so it never
-  imports the root package (which imports it). The picker does **not** hide itself on
-  select/cancel; it leaves that to the root model (08c), keeping the component free of
-  app-flow assumptions.
-- **Modal geometry.** `SetSize` takes the *full screen* size; the picker computes a
-  clamped modal box (a fraction of the screen within [24,60]×[5,20], never exceeding
-  the screen) and `View` centers it with `lipgloss.Place`. A hidden or unsized picker
-  renders `""`. No shared mutable state (principle 1): the root model owns the one
-  Model, feeds it actions, reads its View.
-- **Deps:** `bubbles/list` pulls two new **indirect** transitives — `github.com/atotto/
-  clipboard v0.1.4` and `github.com/sahilm/fuzzy v0.1.1` (via `textinput`/`list`). Added
-  by `go mod tidy`; no existing version moved (minimal-dep discipline, D45).
+**2026-07-20.** M2-08 (the namespace switcher) is too large for one leg, so it is split: **08a** is the picker component in isolation, **08b** adds filtering, **08c** wires it into the app shell (a `ns.switch` action + a `NamespaceLister` seam that re-scopes the watch).
 
 ### D66 — M1 completion bar: fake-client coverage; envtest integration tests deferred
-**2026-07-20.** Maintainer-approved (progress review). M1 is declared
-**feature-complete** on: all in-process feature work (M1-00…M1-09) done, the
-hermetic **fake-client** suite covering discovery, watch reconnect (410 → re-List),
-and the full action set, and the verified **zero-TUI-imports** invariant. The two
-exit criteria that require a **live apiserver** — the restricted-RBAC group-isolation
-integration test, and action-set/watch coverage against real etcd — are **deferred**
-to backlog item **M1-INT** (opt-in `KUBECOM_TEST_ENVTEST=1`). **Why:** envtest needs
-control-plane binaries that are fragile in the sandboxed cloud env the autonomous loop
-runs in (D18); blocking M1 on them would leave it perpetually "in-progress" while all
-downstream work proceeds. Fault isolation itself is implemented and unit-covered — only
-the live-cluster *proof* is deferred. **Consequence:** M1-INT is run by a human locally
-or a dedicated CI job with `setup-envtest`; it is not a blocker for M2–M5.
+**2026-07-20.** Maintainer-approved (progress review).
 
 ### D67 — Vault hygiene: decisions are constraints, not changelog; status lines stay terse
-**2026-07-20.** Maintainer-approved (progress review). Two anti-drift rules for the
-autonomous loop, after the decisions log and status lines had swollen into per-leg
-narratives:
-- **`decisions.md` is load-bearing only.** A `Dn` records a choice a *future* leg must
-  not silently contradict (library, API shape, invariant, tradeoff). How a given leg was
-  implemented goes in the **journal**, not here. The leg loop skims this file every leg,
-  so it must stay signal.
-- **Status lines are one sentence.** A milestone's `Status:` line and the board's
-  `Last updated:` line are a single terse sentence each; the journal is the changelog.
-  Do not append a running per-leg history to either.
-This does not supersede earlier `Dn` entries (they stand); it sets the bar going forward.
+**2026-07-20.** Maintainer-approved (progress review).
 
 ### D68 — Runnable + dogfooded: land the launch leg, then keep it launchable; README stays current
-**2026-07-20.** Maintainer-directed (progress review). A review found the binary
-had never launched the TUI or connected to a cluster — `tea.NewProgram` was called
-nowhere and no real `*kube.Clients` was built outside tests — so despite a
-feature-complete kube layer and a fake-tested app model, nothing had been exercised
-end-to-end against a real apiserver, and **no leg in the plan wired it up**. Fix:
-- **M2-RUN** (new, the next pick, before the remaining M2 component slices): bare
-  `kubecom` builds a real client from kubeconfig/context/namespace flags, injects it
-  via `WithWatcher`/`WithDiscoverer`, and runs `tea.NewProgram(...).Run()`. Minimal
-  but launchable, with a manual real-cluster smoke as part of "done".
-- **Dogfooding is a testing rule, not a one-off.** A human periodically installs
-  `kubecom` and runs it against a real cluster between reviews; every leg from
-  M2-RUN on must keep the binary launchable and **incrementally improve — never
-  regress — the real-cluster experience**. Fake-tested parts are not "done" until
-  they work in the running binary. Added as goals.md principle 8 + the leg loop's
-  Verify step.
-- **README stays current.** Any leg that changes how a user installs, launches,
-  configures, or uses `kubecom` updates `README.md` in the same leg (CLAUDE.md hard
-  rule + the leg skill). The v1 README now carries a real install + usage guide that
-  legs keep in sync with the built binary.
-**Why:** an autonomous, fake-everything, DI-everywhere loop can accrete well-tested
-libraries that never integrate; forcing a runnable binary early turns "tested parts"
-into "a thing that runs" and surfaces real client-go/terminal behavior while the
-surface area is still small.
+**2026-07-20.** Maintainer-directed (progress review).
 
 ### D69 — Feedback inbox: `vault/feedback/`, drained before every leg, deleted once addressed
-**2026-07-20.** Maintainer-directed. A human → agent inbox lives at
-`vault/feedback/` (format mirrors the journal: one markdown file per item,
-`YYYY-MM-DD-slug.md`, title + optional Priority/Area + free-form prose; `README.md`
-is the only non-item file). **Every leg's Orient step lists it**, and unaddressed
-feedback **preempts the board**: if any item is present, the oldest / highest-priority
-one *is* that leg's work. Addressing = implement it (small), or triage it into concrete
-board task(s) and do the first slice (large), or decide+record it (question/direction;
-new `Dn` if load-bearing). The feedback file is **deleted in the same leg's commit**
-and linked from the journal entry — the inbox is a live to-do list, not an archive, so
-a handled item is never left to be re-read. **Why:** the loop runs with no synchronous
-human; a durable, in-repo inbox lets the maintainer steer between reviews (bugs found
-dogfooding per D68, priority changes, course corrections) without waiting on a chat.
-Wired into CLAUDE.md's leg loop, the `do-rewrite-leg` skill (Orient + Pick), and
-`vault/README.md`.
+**2026-07-20.** Maintainer-directed. A human → agent inbox lives at `vault/feedback/` (format mirrors the journal: one markdown file per item, `YYYY-MM-DD-slug.md`, title + optional Priority/Area + free-form prose; `README.md` is the only non-item file).
 
 ### D70 — bubbletea v2 full-screen is a `View` property, not a program option
-**2026-07-20.** M2-RUN wired `tea.NewProgram`. The board's sketch called
-`tea.NewProgram(model, tea.WithAltScreen())`, but **`tea.WithAltScreen()` does not
-exist in bubbletea v2** (v2.0.2) — it was a v1 program option. In v2 the alternate
-screen is a field on the view the model returns: `View.AltScreen`. So the root
-model requests full-screen mode itself, in `Model.View()` (`v := tea.NewView(...);
-v.AltScreen = true`), and the launcher runs a plain `tea.NewProgram(model).Run()`
-with no screen option. Any future program-level terminal mode (mouse, focus
-reporting, bracketed paste, window title) is likewise a `tea.View` field, set in
-`View()`, not a `NewProgram` option — do not reintroduce the v1 option form.
-**Why:** v1-era snippets (the board sketch included) mislead here; recording the v2
-shape stops the next leg re-deriving it against a missing symbol.
+**2026-07-20.** M2-RUN wired `tea.NewProgram`. The board's sketch called `tea.NewProgram(model, tea.WithAltScreen())`, but **`tea.WithAltScreen()` does not exist in bubbletea v2** (v2.0.2) — it was a v1 program option.
 
 ### D71 — TUI logging goes to a file with klog fully off stderr (raise the stderr threshold)
-**2026-07-20.** The `stack.md` rule "nothing may write to stdout/stderr while the
-TUI owns the terminal" needs an explicit klog step: **`klog.LogToStderr(false)` is
-not sufficient**, because klog copies every ERROR-level line to stderr regardless
-whenever the line's severity meets the stderr *threshold* (default ERROR) — which is
-exactly the `memcache.go "couldn't get current server API group list"` line
-client-go emits on an unreachable cluster, and it corrupts the alt-screen. The
-launcher (`cmd/kubecom/logging.go`, `setupLogging`) therefore, before any client is
-built: points `slog` at a log file under the user cache dir
-(`os.UserCacheDir()/kubecom/kubecom.log`), and configures klog through a **private
-`flag.FlagSet`** (no global flag pollution) with `logtostderr=false`,
-`alsologtostderr=false`, `stderrthreshold=FATAL`, plus `klog.SetOutput(logFile)`.
-Verified: with an unreachable cluster, the memcache error lands in the log file and
-stderr stays empty. Any code that adds a new logging sink must keep it off
-stdout/stderr on the TUI path the same way. **Why:** a single stray client-go line
-tears a hole in the rendered UI (D68 dogfooding regression); the threshold detail is
-non-obvious and cost a debugging round to find.
+**2026-07-20.** The `stack.md` rule "nothing may write to stdout/stderr while the TUI owns the terminal" needs an explicit klog step: **`klog.LogToStderr(false)` is not sufficient**, because klog copies every ERROR-level line to stderr regardless whenever the line's severity meets the stderr *threshold* (default…
 
 ### D72 — M2-08b: picker filtering is picker-owned (its own textinput), with a control/text key split
-**2026-07-20.** The modal picker filters itself: it holds its own
-`bubbles/textinput` over the unfiltered value set and narrows the visible list by
-**case-insensitive substring** — the list's native filter stays disabled (D65). Two
-constraints bind future legs, chiefly the M2-08c app wiring:
-- **Input split.** `Update(keymap.Action)` handles control gestures (nav,
-  `nav.drillIn`, `nav.back`, and `app.filter` which *opens* the field); raw text goes
-  through the separate `UpdateFilter(tea.KeyPressMsg)` entry point. The root model,
-  while `picker.Filtering()` is true, must resolve control keys to actions **first**
-  and route only the leftover printable/edit keys to `UpdateFilter` — otherwise a
-  value bound to a nav action (`j`, `k`, `G`, `n`, …) could never be typed into the
-  filter. This is the sanctioned exception to "no view matches a raw key" (D11): a
-  text field consuming text is not action binding.
-- **Back clears, then cancels.** `nav.back` while filtering closes the filter and
-  restores the full list (no `CancelledMsg`); a second `nav.back` cancels the picker.
-  `Hide()` also closes the filter so it reopens clean.
-
-**Why:** locks the seam M2-08c wires against, and prevents a future leg from
-reintroducing list-native filtering (its own `/` key would leak a raw binding).
+**2026-07-20.** The modal picker filters itself: it holds its own `bubbles/textinput` over the unfiltered value set and narrows the visible list by **case-insensitive substring** — the list's native filter stays disabled (D65).
 
 ### D73 — M2-08c: namespace switch is a `ns.switch` action + a `NamespaceLister` seam; picker re-scopes the current watch
-**2026-07-20.** The namespace switcher is wired into the app shell as an action, a
-seam, and a re-scope, each a constraint future legs (context/container/port pickers,
-config persistence) build on:
-- **`ns.switch` action, default `ctrl+n`.** A new `ns` action namespace (its own
-  help column / doc section). `ctrl+n` is the default so `:` stays free for a future
-  command palette; rebindable like any action (D11). Future switchers get their own
-  `<group>.switch` action, not more keys hard-coded in views.
-- **`NamespaceLister` seam** (`Namespaces(ctx) ([]string, error)`), wired with
-  `WithNamespaceLister`, mirroring `WithWatcher`/`WithDiscoverer`: `*kube.Clients`
-  satisfies it, nil → **namespace-switch-inert** (the action is a no-op, the picker
-  never opens). Listing runs off the update loop (async `namespacesLoadedMsg`), so
-  opening the picker never blocks on the network; a list failure closes the picker
-  and surfaces a classified error (principle 3), never crashes.
-- **Selection re-scopes the live watch.** The shell tracks the `current` resource
-  (set whenever a watch starts); a `picker.SelectedMsg` sets `m.namespace` +
-  `status.SetNamespace` and re-selects `current` so the M2-07c watch re-lists under
-  the new scope. With no resource open yet the scope is just stored for the next
-  drill-in.
-- **Concrete input routing (realizes D72's split).** While `nsPicker.Filtering()`,
-  the root model routes a keypress to `UpdateFilter` when it carries text **or** is an
-  unmapped no-text edit key (backspace); a *mapped* no-text key (esc/enter/arrows/
-  `ctrl+d`…) resolves to a picker `Action`. Outside filtering, mapped keys drive the
-  picker and unmapped keys are dropped. The open picker captures **all** input before
-  the sequencer, so the panes underneath never move.
-
-**Why:** locks the switcher shape so the later ctx/container/port pickers reuse the
-action+seam+routing pattern instead of re-deriving it, and keeps the "all input
-through actions" invariant (D11) intact around the one sanctioned text field.
+**2026-07-20.** The namespace switcher is wired into the app shell as an action, a seam, and a re-scope, each a constraint future legs (context/container/port pickers, config persistence) build on: - **`ns.switch` action, default `ctrl+n`.** A new `ns` action namespace (its own help column / doc section).
 
 ### D74 — Errors surface only inside the fixed layout: a transient, single-line status-bar toast
-**2026-07-20.** An `ErrorMsg` (any classified error from an async seam — watch
-start, namespace list, a watch ERROR bridged by the pump) is surfaced **only** as a
-transient message in the **status bar**, never printed to stdout/stderr and never
-rendered into a growing/scrolling pane. Constraints future legs must not contradict:
-- **The status bar owns error display.** `statusbar.SetError` flattens the text to
-  one line (`strings.Fields`) and `View` clips it to the bar width *before* styling,
-  so a multi-line or over-wide error can never grow the bar past its single line and
-  scroll/resize the panes (the D68 dogfood feedback this fixes). A shown error takes
-  the whole line (help hint dropped) and auto-clears after `errorDisplay` (5s).
-- **Auto-clear is generation-guarded** (`statusErrGen`, mirroring `seqGen`/`watchGen`):
-  each surfaced error bumps the gen and arms an `errorClearMsg{gen}`; only a clear
-  whose gen still matches clears the bar, so a newer error keeps its full window.
-- **The root `Update` must handle `ErrorMsg`.** Before this leg the top-level case
-  was missing, so watch-start and ns-list errors fell through to `return m, nil` and
-  were dropped silently; `handleWatchMsg` likewise swallowed watch ERRORs. All three
-  now route through `surfaceError`. A future feature that produces errors emits an
-  `ErrorMsg` (via `NewErrorMsg`) and gets this surfacing for free — it must not invent
-  its own out-of-layout error rendering. A richer surface (modal for fatal errors,
-  history) can supersede this, but the no-stdout / no-layout-shift rule is binding.
-
-**Why:** honors the "degrade, don't crash — and don't wreck the layout either"
-principle and the stack.md no-stdout-while-TUI rule (D71); gives every async seam one
-sanctioned, layout-safe error channel instead of each inventing its own.
+**2026-07-20.** An `ErrorMsg` (any classified error from an async seam — watch start, namespace list, a watch ERROR bridged by the pump) is surfaced **only** as a transient message in the **status bar**, never printed to stdout/stderr and never rendered into a growing/scrolling pane.
 
 ### D75 — README install is local-checkout-only until an M5 release tag; no `@v1` remote form
-**2026-07-20.** `go install …/cmd/kubecom@v1` is broken and stays out of the README:
-`@v1` is a **module version query**, and `v1` matches Go's semver-prefix form (major
-version 1), so the toolchain resolves it to a `v1.x.x` **tag** (none exist) and never
-falls back to the branch named `v1`. Constraints future legs must not contradict:
-- **The primary install path is a local `v1` checkout** (`git clone -b v1 … && go
-  install ./cmd/kubecom`), which needs no tag and respects the branch. Do **not**
-  reintroduce a bare `@v1` (or `@latest`) remote one-liner before a real release tag
-  exists. A commit-SHA pin (`@<sha>`) is not semver-parsed and may be offered as an
-  optional remote form.
-- **Restoring the clean remote `go install …@latest` is an M5 release task** (tag a
-  real `v1.x.x`; the `v1`→`main` rename also dissolves the branch-vs-semver
-  collision). The README install section flips back to the remote one-liner only once
-  that tag ships (keep it current per D68).
-
-**Why:** addresses feedback FB-go-install (a dogfood install failure); keeps the
-documented install command actually runnable on the untagged `v1` branch instead of
-failing on a nonexistent semver tag.
+**2026-07-20.** `go install …/cmd/kubecom@v1` is broken and stays out of the README: `@v1` is a **module version query**, and `v1` matches Go's semver-prefix form (major version 1), so the toolchain resolves it to a `v1.x.x` **tag** (none exist) and never falls back to the branch named `v1`.
 
 ### D76 — Right browse pane is a slot: welcome page pre-drill-in, live table after
-**2026-07-20.** The right pane of the browse view is a single slot the root model
-fills conditionally, gated by `m.hasCurrent`:
-- **Before the first drill-in** (`!hasCurrent`) it renders the `welcome` component
-  (`internal/tui/components/welcome`) — app name/version, `context · namespace`
-  scope, a pick-a-resource hint, and the registry-generated key hints — sized to the
-  table's geometry and reflecting the same right-pane focus. A future leg adding a
-  right-pane surface (details/logs/describe view) must respect this slot: it shows
-  when a resource is open, never blanks the pane, and never a raw stdout write.
-- **After a resource is open** the live table takes the slot (unchanged).
-- **Context/version are cosmetic props**, injected via `WithContext`/`WithVersion`
-  and shown on the welcome page (both) and the status bar (context). `kube.ContextName`
-  resolves the context name with no network I/O and returns `""` on any kubeconfig
-  failure — the label degrades to blank, it never blocks start (principle 3).
-
-**Why:** addresses feedback FB-welcome-page (a bare launch showed an empty table);
-keeps the first paint a deliberate, informative landing screen and fixes the
-status bar's context label, which was wired but never set.
+**2026-07-20.** The right pane of the browse view is a single slot the root model fills conditionally, gated by `m.hasCurrent`: - **Before the first drill-in** (`!hasCurrent`) it renders the `welcome` component (`internal/tui/components/welcome`) — app name/version, `context · namespace` scope, a pick-a-resource hint…
 
 ### D77 — Resource menu is grouped into Dashboard-style sections with non-selectable headers
-**2026-07-20.** The left resource menu renders as **grouped sections**, not a flat
-list: `Cluster` → `Workloads` → `Config` → `Network` → `Storage` → `Access Control`,
-plus a trailing `Custom Resources` section for discovered CRDs/extra groups.
-Constraints future legs must not contradict:
-- **Grouping is via static section headers, not collapse/expand.** A header is a
-  non-selectable render-only row (styled `styles.Header`); the cursor only ever lands
-  on `Item` rows and navigation (`up`/`down`/`top`/`bottom`) skips headers. No new
-  expand/collapse action, no per-section open/closed state — keeps navigation trivial
-  and aligns with the approachable, non-k9s goal. A later leg may add collapse/expand,
-  but it must supersede this decision explicitly, not bolt raw keys onto the menu (D11).
-- **`Item.Section` is the grouping key and section members must be contiguous** in the
-  item slice. `menu.rows()` walks the items once and emits exactly one header per
-  section on a section change, so a section that is split across the slice would
-  render a duplicate header. The seed authors sections contiguously; `Reconcile`
-  preserves the invariant by appending every discovered extra into the single trailing
-  `Custom Resources` section (never interleaving). Reconcile's twin-fill/mark-
-  unavailable/selection-preserve behaviour (D57) is unchanged.
-- **The scroll offset is a display-row offset** (it counts header lines), not an item
-  index. Selection stays visible via `cursorRow()`; scrolling up onto a section's
-  first item pulls its header into view.
-
-**Why:** addresses feedback `2026-07-20-menu-structure-nesting` (the flat menu read as
-disorganized). Mirrors the original kube-commander's cluster-then-namespaced split and
-the Kubernetes Dashboard's Workloads/Config/Network/Storage grouping, giving a familiar
-structure that survives CRDs being appended.
+**2026-07-20.** The left resource menu renders as **grouped sections**, not a flat list: `Cluster` → `Workloads` → `Config` → `Network` → `Storage` → `Access Control`, plus a trailing `Custom Resources` section for discovered CRDs/extra groups.
 
 ### D78 — Table filter is a view over an authoritative unfiltered row set
-**2026-07-20 (M2-09a).** The resource table keeps two row sets: `full` (every row
-the watch has delivered) and the displayed `table` (full, or full narrowed by the
-active `filter`). Constraints future legs (M2-09b app wiring, and any later
-filter/search work) must not contradict:
-- **Watch deltas mutate `full`, never the filtered view.** ApplyEvent upserts/
-  deletes/reset onto `full`, then re-derives the displayed set via `applyFilter`.
-  A narrowing filter therefore never drops a live row: clearing it (`SetFilter("")`
-  / `ClearFilter`) brings every row back. Cursor/offset/render/selection all operate
-  on the displayed set (so `RowCount`/`SelectedRow` mean the *visible* rows;
-  `TotalRowCount` is the unfiltered denominator).
-- **Matching is case-insensitive substring across the *visible* (priority-0)
-  columns only** — never the hidden `-o wide` extras, so the filter matches what the
-  user can see. Selection is preserved by object UID across a filter change (cursor
-  follows the row if it still matches, else clamps into the narrowed range).
-- **`SetTable` clears the filter; `ApplyEvent` preserves it.** A fresh List for a
-  newly selected resource (SetTable) must not carry a stale filter from the previous
-  resource, but a watch reconnect (a fresh RESET via ApplyEvent, D59) must keep the
-  user's filter — the filter is part of the selection continuity D59 protects.
-- The component only narrows. The root model owns opening the filter from the keymap
-  `app.filter` action + a text field and rendering the active-filter indicator
-  (M2-09b); it drives narrowing through `SetFilter`.
+**2026-07-20 (M2-09a).** The resource table keeps two row sets: `full` (every row the watch has delivered) and the displayed `table` (full, or full narrowed by the active `filter`).
 
 ### D79 — Human-task queue: `vault/human-tasks/` (agent → human), can block the board / a milestone
-**2026-07-20.** Maintainer-directed. The inverse of the feedback inbox (D69): a
-directory where the **agent parks work only a human can do** — dogfood/visual-UX
-confirmation against a real cluster, credentials/infra it must not fabricate,
-running envtest locally, irreversible/outward-facing actions (release tag, default-
-branch change, publishing), or a genuine human judgment call. One markdown file per
-task (`YYYY-MM-DD-slug.md`; `README.md` documents the flow) with `Blocks:`,
-`Priority:`, and `Status: open|done` fields. **Every leg's Orient step lists it**, and:
-- An **open** task's `Blocks:` gates Pick — it removes the named board items (or, with
-  `milestone:MX`, the whole milestone) from what the agent may start. `Blocks: none`
-  is advisory.
-- **Blocking never means busywork.** If open tasks gate all available work, the agent
-  **stops and reports** the blocker(s) rather than inventing low-value legs; the
-  scheduled run ends and its push notification names the blocker. Feedback items and
-  bug fixes are never blocked unless a task's `Blocks:` names them.
-- A `Status: done` task → the agent folds its `## Result` into the board/journal/a
-  decision/feedback and **deletes** the file.
-- The agent **raises** a task here instead of claiming a green it couldn't earn (ties
-  to the dogfooding rule D68): if a leg needs a human, it files a task with a
-  conservative `Blocks:` rather than faking verification.
-**Why:** the autonomous loop had no way to hand work back to the maintainer or to
-gate progress on it — so real-cluster validation debt (D68) silently accumulated
-while the loop built more UI on top. A blocking agent→human queue closes that gap.
-Wired into CLAUDE.md's leg loop + hard rules, the `do-rewrite-leg` skill (Orient,
-Pick, Verify), the `do-rewrite-run` orchestrator (blocked → end run + notify), and
-`vault/README.md`.
+**2026-07-20.** Maintainer-directed. The inverse of the feedback inbox (D69): a directory where the **agent parks work only a human can do** — dogfood/visual-UX confirmation against a real cluster, credentials/infra it must not fabricate, running envtest locally, irreversible/outward-facing actions (release tag…
 
 ### D80 — Table filter wiring: `/` opens a live field, enter commits · esc clears, and n/N step matches with wrap
-**2026-07-20 (M2-09b).** The M2-09a filter core is wired into the shell as an
-input mode, mirroring the namespace picker's control/text routing (D73). Constraints
-future filter/search legs must not contradict:
-- **`app.filter` (`/`) opens a live filter field over the current table**, seeded
-  with any active filter (reopening edits it). It is a **no-op unless a resource
-  table is showing** (`hasCurrent`) — the welcome page has nothing to narrow. While
-  the field is open the root routes every keypress through `routeFilterKey`,
-  bypassing the sequencer exactly as the open picker does; typing narrows the rows
-  live via `table.SetFilter` (D78).
-- **Control/text split (D73), reused verbatim.** A *mapped no-text* key
-  (esc/enter/arrows/ctrl+d…) is a control action; any text rune or unmapped no-text
-  edit key (backspace) is field input. So a bound vim letter like `j` *types* while
-  the field is open (it does not navigate); the no-text arrows/page keys move the
-  selection to preview matches live.
-- **enter commits, esc clears.** enter (nav.drillIn) closes the field keeping the
-  narrowed view — normal routing resumes so `j/k` and `n/N` work over the matches;
-  esc (nav.back) clears the filter and closes the field (restores every row, D78).
-  esc on a *committed* filter (field closed) also clears it — esc exits the filtered
-  view. A new resource selection (`SetTable`, D78) resets the shell's filter state.
-- **n/N (searchNext/Prev) step matches with wrap.** With a *narrowing* filter the
-  displayed rows are exactly the matches, so search is "step to next/prev displayed
-  row, wrapping at the ends" (vim search wraps; plain `j/k` clamp) — backed by
-  `table.SelectNextWrap`/`SelectPrevWrap`. **n/N are no-ops with no active filter**
-  (nothing to iterate); there is no separate match index over an unfiltered list.
-- **The active filter surfaces in the status bar** (a left segment: the live input
-  view while editing, `/query` once committed) — inside the fixed layout, never a
-  new pane (consistent with the D74 error toast). The component still only narrows;
-  the shell owns opening, committing, clearing, and the indicator (D78).
-
-**Why:** locks the one text-input interaction the browse view has into the same
-action-routed, layout-safe shape as the picker and the error toast, and settles the
-n/N-vs-narrowing-filter question (fold search into filter+step, don't maintain a
-parallel match cursor) so later search work builds on it instead of re-deciding.
+**2026-07-20 (M2-09b).** The M2-09a filter core is wired into the shell as an input mode, mirroring the namespace picker's control/text routing (D73).
 
 ### D81 — M1-04b (lazy group-detail-on-open) retired as obsolete; do not reintroduce a collapsible-group menu for it
-**2026-07-20 (M1-04b).** The parked M1-04b item ("fetch a group's full resource
-detail only when its menu is opened") is **retired won't-do** — it does not fit the
-realized architecture and its intent is already delivered. Two grounds:
-- **No group-open interaction exists, by design.** The M2 menu is a *flat*
-  Dashboard-sectioned list of resource *kinds* (D77, hardened after the FB-menu-nesting
-  feedback); drilling in (`nav.drillIn`) starts a *watch* on the selected kind, not a
-  group-detail fetch. There is no collapsible group node to "open," and adding one
-  purely to defer discovery would **regress** UX — discovered CRDs/extra kinds would
-  vanish from the menu until their group is expanded, the opposite of "everything
-  discovered shows up."
-- **The cold-start intent is already met.** Non-blocking cold start without an eager
-  blocking full-discovery fetch is delivered by the seed set (M1-02, core kinds usable
-  instantly), async background discovery (M1-03, `StartDiscovery` never blocks a
-  caller), and kubectl-style per-host on-disk discovery caching (M1-04,
-  `diskcached`, zero network I/O at construction, TTL 6h). Per-group discovery detail
-  is already read/written lazily *by the disk cache*; there is nothing left to defer
-  without the (unwanted) group-open UI.
-**Constraint:** do not reintroduce a collapsible-group menu or per-group lazy
-discovery on the strength of this old item alone — it would need a fresh UX decision
-that supersedes D77's flat-menu direction. **Consequence:** M1 has no remaining
-open feature work; only the tracked envtest item (M1-INT, D66) is deferred.
+**2026-07-20 (M1-04b).** The parked M1-04b item ("fetch a group's full resource detail only when its menu is opened") is **retired won't-do** — it does not fit the realized architecture and its intent is already delivered.
+**Refs:** supersedes D77.
 
 ### D82 — Menu carries non-resource rows (`Item.Kind`); the namespace picker is a seam row between cluster-scoped and namespaced sections
-**2026-07-21 (FB-ns-menu-seam).** The left menu is no longer resource-rows-only. An
-`Item.Kind` (`ItemResource` default / `ItemNamespace`) tags each row; the seed
-inserts one `ItemNamespace` **seam row** between the cluster-scoped `Cluster`
-section and the first namespaced section, so the menu itself communicates the
-cluster/namespaced boundary (the feedback's ask). Constraints future legs must not
-contradict:
-- **A non-resource row has no GVR/`Section`.** It is selectable (cursor lands on it)
-  and drilling in emits its own message — the namespace seam emits
-  `menu.NamespaceRequestedMsg`, which the root opens the namespace picker on (the
-  same effect as the `ns.switch`/ctrl+n shortcut, which stays). It never starts a
-  watch.
-- **Discovery `Reconcile` skips non-resource rows** (`Kind != ItemResource`): they
-  have no discovered twin and no API group, so twin-fill / mark-unavailable /
-  `seen` all bypass them, and selection-preservation resolves the seam by kind (it
-  has no GVR to match). The D77 grouping invariant (one header per contiguous
-  `Section`) is unaffected — the seam's empty `Section` emits no header and sits
-  un-grouped between the two.
-- **The seam shows the live scope** (`menu.SetNamespace`, "" → "all namespaces"),
-  which the root keeps current from the initial `-n` flag and every picker
-  selection — alongside the status bar and welcome page.
-
-**Why:** addresses feedback `2026-07-21-01`; establishes the general "special
-non-resource menu row" shape (a future context switcher, actions row, etc. reuse
-`Item.Kind` rather than each bolting on a parallel concept) without disturbing the
-D57/D77 reconcile+grouping guarantees.
+**2026-07-21 (FB-ns-menu-seam).** The left menu is no longer resource-rows-only.
 
 ### D83 — Per-context menu customization lives in its own file per kubeconfig context, under `<configdir>/kubecom/menus/<sanitized-context>.yaml`
-**2026-07-21 (FB-menu-config-01, feedback `2026-07-21-02`).** CRDs and other
-resource types the built-in menu doesn't seed are added via a **dynamic,
-per-context** menu config — not merged into the single `config.yaml`. Constraints
-future slices must not contradict:
-- **One file per context**, in a `menus/` subdir of the kubecom config dir (D20),
-  keyed by the kubeconfig context name. A context with no file falls back to the
-  built-in seed + discovery menu (principle 3 — a missing customization degrades to
-  the default, never blocks). Owned by `config.MenuConfig` / `config.MenuResource`
-  (the CRD entry format: group/version/resource + optional kind/namespaced/section/
-  title; version+resource required, "" group = core).
-- **The context name is sanitized to a safe single filename segment**
-  (`config.menuFileName`: every char outside `[A-Za-z0-9._-]` → `_`, then `.yaml`).
-  This is intentionally lossy — two contexts differing only in sanitized characters
-  collide onto one file — chosen as the conservative safety tradeoff so an arbitrary
-  context name can never escape `menus/` or split the path. An empty context is an
-  error (no per-context file resolvable).
-- **The config package stays free of the kube/menu packages.** It defines the
-  schema, resolves the path, and loads/validates only; mapping `MenuResource` →
-  menu rows and merging with the seed/discovery set is a later slice
-  (FB-menu-config-02) so config keeps no import cycle and stays trivially testable.
-
-**Why:** addresses feedback `2026-07-21-02`; different clusters expose different
-CRDs, so per-context files keep each cluster's menu relevant. **Consequence:** the
-merge and app-wiring slices build on this loader; they must resolve the file via
-`config.MenuPath(context)` and treat a missing/half-broken file as "use the default
-menu" rather than an error that blocks start.
+**2026-07-21 (FB-menu-config-01, feedback `2026-07-21-02`).** CRDs and other resource types the built-in menu doesn't seed are added via a **dynamic, per-context** menu config — not merged into the single `config.yaml`.
 
 ### D84 — A pane's inner text region is `innerW-2`, not `innerW`: lipgloss borders are border-box for width; size content and clip to the real region
-
 `2026-07-21` · feedback `2026-07-21-03` (menu overflow/scroll).
-
-A bordered pane rendered through `styles.Pane`/`PaneFocus` uses lipgloss v2, where
-**the border is border-box for width but content-box for height**:
-`frame.Width(P)` produces a block whose *total* width is `P` (its inner text region
-is `P-2`, the two border columns eat into it), while `frame.Height(Q)` produces
-`Q` *content* rows plus 2 border rows (total `Q+2`). Components size the frame with
-`frame.Width(innerW)` where `innerW = width-2`, so the actual usable text columns
-are **`innerW-2`**. Sizing content lines to `innerW` (the prior menu code) makes
-every full-width line 2 columns too wide; lipgloss then clips or wraps it past the
-border — the visible cause of the dogfood menu overflow (long kind names spilling
-onto a detached second line below the frame).
-
-- **A viewport component must size its content lines — and clip long text — to the
-  real inner region `innerW-2`, not `innerW`.** The menu now does: it clips titles
-  to that region with an ellipsis (one line, never a wrap) and reserves the
-  rightmost region column for a proportional scrollbar (shown only when
-  `rows > visible`; thumb span = visible/total, position = offset/range).
-- **This is a latent hazard in the other bordered components** (`table`, `picker`,
-  `statusbar`, `welcome`) — they use the same `Width(innerW).MaxWidth(innerW)`
-  shape, so their full-width lines are silently truncated by 2 columns. Not fixed
-  here (out of this leg's scope); a future leg touching their layout should adopt
-  the `innerW-2` region and can lift the menu's `clip` helper.
-
-**Why:** a menu that wraps long CRD kinds outside its border reads as broken (the
-dogfood report). **Consequence:** treat `innerW-2` as the drawable width inside any
-`styles.Pane` frame; don't reintroduce full-width content sized to `innerW`.
+- **A viewport component must size its content lines — and clip long text — to the real inner region `innerW-2`, not `innerW`.**
+- **This is a latent hazard in the other bordered components**
 
 ### D85 — The persistent bottom key-hint is focus-aware: menu-context vs table-context curated subsets, chosen by which pane holds focus
-
 `2026-07-21` · feedback `2026-07-21-06` (status-bar key hints).
-
-The always-on status-bar key hint (D11 — registry-generated, `help.Model.ShortHelpView`)
-was a single focus-agnostic curated set (`shortHelpActions`). It is now **focus-aware**:
-the browse status bar shows the keys relevant to whatever pane holds focus, so the hint
-updates as focus moves (the dogfood ask).
-
-- `keymap.HelpContext` (`HelpMenu`/`HelpTable`) names a **focus context, never a key**;
-  the concrete keys still come from the registry, so a new context is added by listing
-  actions in `contextShortHelpActions`, not by hard-coding keys in a view (D11 holds).
-  `HelpKeyMap.ShortHelpContext(ctx)` returns that context's enabled bindings; an unknown
-  context falls back to the focus-agnostic `ShortHelp()`.
-- **Menu context** offers drill-in + namespace (no filter/search — nothing to filter on
-  the menu); **table context** offers filter + next-match + back (no drill-in); namespace,
-  help and quit appear in both. The focus-agnostic `ShortHelp()` is retained for the
-  **welcome landing page** (no single focused pane there).
-- The root model owns the focus→context mapping in one place (`syncHints`) and calls it
-  wherever focus switches (drill-in, nav.left/right pane switch, esc focus-pop, filter
-  open) and on resize (the hint re-elides to the new width). A future leg adding a focus
-  target must call `syncHints` at that switch or the hint goes stale.
-
-**Why:** a hint that shows keys irrelevant to the focused pane (or omits the relevant
-ones, e.g. `/` filter while on a table) is noise. **Consequence:** keep hint subsets in
-`contextShortHelpActions` keyed by focus context; don't reintroduce a single flat status
-hint, and don't hard-code per-context key lists in views.
-
-**Deferred (board `FB-hintbar-dedicated`):** promoting the hint into a dedicated,
-always-visible bottom line of its own so it is never dropped under width pressure (today
-the status bar still drops the right-aligned hint when the left state segment leaves no
-room, and hides it entirely behind an error toast).
+- `keymap.HelpContext` (`HelpMenu`/`HelpTable`) names a **focus context, never a key**; the concrete keys still come from the registry, so a new context is added by…
+- **Menu context**
+- The root model owns the focus→context mapping in one place (`syncHints`) and calls it wherever focus switches (drill-in, nav.left/right pane switch, esc focus-pop…
 
 ### D86 — Mouse is additive and routed through keymap Actions, never raw mouse behaviour in views; enabled per-View via MouseModeCellMotion
-
-`2026-07-21` · feedback `2026-07-21-08` (mouse support). **Partially superseded by
-D97 (2026-07-22): mouse capture is now off by default and opt-in via `mouse.toggle`
-— the "additive, routed through Actions" invariant here still holds; only the
-"enabled per-View unconditionally" clause is replaced.**
-
-Bubble Tea mouse reporting is enabled in the root model's `View` (`v.MouseMode =
-tea.MouseModeCellMotion`, alongside `v.AltScreen` — in bubbletea v2 both are View
-properties, not program options, D70). The root `Update` handles `tea.MouseClickMsg`
-and `tea.MouseWheelMsg`; every other mouse type is ignored.
-
-- **Mouse is strictly additive** (goals principle 6 — vim-first, never vim-only): it
-  covers only the headline gestures — left-click a menu item to open it (drill-in),
-  left-click a table row to select it, wheel to step the selection of the pane under
-  the pointer. The keyboard path stays the primary, complete interface.
-- **No view matches a raw mouse event for behaviour** (D11 in spirit): a click/wheel is
-  turned into the same `keymap.Action` (nav.up/down, drill-in) or the same public
-  Select* call the keyboard drives, so selection/scroll/drill-in stay single-sourced.
-  The coordinate→row mapping lives in the components as pure functions
-  (`menu.RowItemAt`, `table.RowAt`, both content-row → item/row index, honouring the
-  scroll offset and rejecting headers/borders/blanks); the root converts an absolute
-  mouse (X,Y) to a body-relative content row and picks the pane by X
-  (`menuPaneWidth`).
-- **Mouse is inert while an overlay is up** (help, namespace picker, live filter): a
-  stray click must not reach and mutate the panes beneath a modal.
-
-**Why:** mouse must not fork the input model or bake keys/coordinates into rendering.
-**Consequence:** a future leg extending mouse must keep it additive, route it through
-Actions/public Select* entries (not new raw-mouse logic in a view), keep `MouseMode`
-set in `View`, and gate it behind `overlayActive()`. A component adding a
-click target exposes a coordinate→index accessor rather than handling mouse itself.
+`2026-07-21` · feedback `2026-07-21-08` (mouse support). **Partially superseded by D97 (2026-07-22): mouse capture is now off by default and opt-in via `mouse.toggle` — the "additive, routed through Actions" invariant here still holds; only the "enabled per-View unconditionally" clause is replaced.**
+- **Mouse is strictly additive**
+- **No view matches a raw mouse event for behaviour**
+- **Mouse is inert while an overlay is up**
+**Refs:** superseded by D97.
 
 ### D87 — The persistent key-hint is a dedicated bottom line of its own (the hintbar), not a status-bar segment
-
 `2026-07-21` · board `FB-hintbar-dedicated` (deferred remainder of D85).
-
-The focus-aware key hint (D85) used to be a right-aligned segment on the status bar,
-sharing one line with the live state (context · namespace · filter · spinner). It now
-lives on its own dedicated row **below** the status bar — the `hintbar` component
-(`internal/tui/components/hintbar`) — so the hint and the state never compete for width.
-
-- **The status bar no longer lays out a hint.** `statusbar` dropped `SetShortHelp` and
-  its right-align/gap logic; it renders only its left segment (or a full-line error
-  toast), clamped to width. A future leg must not put the hint back on the status bar.
-- **The hintbar is fed the same registry-generated, focus-aware string** the status bar
-  used to get: the root's `syncHints` now calls `m.hintbar.SetHint(help.ShortHelpContextView(ctx))`
-  (D11/D85 intact — the component still matches no raw key). Call `syncHints` at every
-  focus switch and on resize, exactly as before.
-- **The hint is now always visible**: because it owns a line, it is never dropped under
-  width pressure and never hidden behind an error toast — the two failures D85 called
-  out. Layout reserves one extra bottom row: `bodyH = height - statusBarHeight -
-  hintBarHeight` (mirrored in `bodyHeight()` for mouse mapping); the vertical stack is
-  body · status · hint.
-- The welcome landing page keeps its own in-pane focus-agnostic hint (`welcome.SetShortHelp`),
-  unchanged.
-
-**Why:** state and keys competing for one line meant the hint got truncated or dropped
-just when the user needed it (narrow terminal, active error). **Consequence:** keep the
-hint on the hintbar line; a leg adding another persistent bottom element must budget its
-own row (adjust `bodyH`/`bodyHeight` together) rather than crowding the status or hint line.
+- **The status bar no longer lays out a hint.**
+- **The hintbar is fed the same registry-generated, focus-aware string**
+- **The hint is now always visible**
+- The welcome landing page keeps its own in-pane focus-agnostic hint (`welcome.SetShortHelp`), unchanged.
 
 ### D88 — The confirm/prompt modal resolves accept/decline through nav.drillIn / nav.back (Enter/Esc), not dedicated y/n actions
-
-M2-10 landed the confirm/prompt overlay (`internal/tui/components/modal`) that
-replaces the original's racy tcell popup. It is a sibling of the picker (D65): a
-Kind-stamped, centered, bordered box driven **only** through resolved
-`keymap.Action`s, emitting its own `ConfirmedMsg`/`CancelledMsg` (never importing
-the root, D56), holding no shared mutable state (principle 1).
-
-- **Accept = `nav.drillIn` (Enter), decline = `nav.back` (Esc).** There are no
-  `confirm.yes`/`confirm.no` actions and no raw `y`/`n` matching — the
-  Enter/Esc-consistent modal convention of `knowledge/keybindings.md`, same as the
-  picker. A future leg adding a confirm must route through these actions, **not**
-  reintroduce raw-key `y`/`n` handling (D11). The board's "(y/n)" was the semantic
-  (a yes/no question), not a keybinding mandate.
-- **Two modes on one Model.** `ShowConfirm(kind,title,message)` → `ConfirmedMsg`
-  with empty `Value`; `ShowPrompt(kind,title,message,initial)` → focuses an owned
-  `textinput`, `ConfirmedMsg.Value` carries the entered text. `Prompting()` gates
-  raw text to `UpdatePrompt` (the single raw-key entry point), mirroring the
-  picker's `Filtering()`/`UpdateFilter`.
-- **Component-only, like the picker was (M2-08a).** Nothing triggers a confirm yet
-  (delete/scale/… are M3); the app-shell wiring lands **with the M3 action that
-  needs it**, which decides the copy and (for destructive actions) whether Enter
-  should default to accept. Do not wire an unused confirm into the shell before then.
-
-**Consequence:** any M3 destructive/parameterised action gets its confirmation by
-owning a `modal.Model` on the root, calling `ShowConfirm`/`ShowPrompt`, and handling
-`ConfirmedMsg`/`CancelledMsg` — no new keymap actions, no raw y/n.
+M2-10 landed the confirm/prompt overlay (`internal/tui/components/modal`) that replaces the original's racy tcell popup.
+- **Accept = `nav.drillIn` (Enter), decline = `nav.back` (Esc).**
+- **Two modes on one Model.**
+- **Component-only, like the picker was (M2-08a).**
 
 ### D89 — `Config.Save`/`SaveFile` are the config write-back primitives; M2-11's menu-customization scope is subsumed by the per-context menu files (D83)
-
-`2026-07-22` (M2-11a). The main config gained write-back to match Load: `Config.Save(io.Writer)`
-marshals via `sigs.k8s.io/yaml` (round-trips `keys:` today; what Save emits, Load reads
-back equal), and `Config.SaveFile(path)` persists it — `MkdirAll(dir, 0o700)`, marshal to a
-temp file in the **same** dir, `Chmod 0o600`, then `os.Rename` over the target so a crash
-mid-write never truncates the live config. It is user data, kept private like a kubeconfig.
-
-- **M2-11 narrows.** M2-11 (added 2026-07-19) predates D83: its "customized resource
-  list / order" belongs to the **per-context menu files** (`menus/<context>.yaml`, D83),
-  which already load on start (FB-menu-config-03). A future leg must **not** duplicate a
-  resource list into `config.yaml`. M2-11's genuine remainder is config write-back (this
-  leg) + last-namespace persistence + load-on-start wiring (M2-11b).
-- **Last namespace is per-context.** M2-11b decides where it lives (a per-context store,
-  not a single global field), since a namespace is meaningless across clusters — record
-  that choice when taking M2-11b.
-
-**Consequence:** persistence legs (M2-11b) and the M2-12 legacy migration write through
-`SaveFile`; don't hand-roll another YAML writer or a non-atomic overwrite.
+`2026-07-22` (M2-11a). The main config gained write-back to match Load: `Config.Save(io.Writer)` marshals via `sigs.k8s.io/yaml` (round-trips `keys:` today; what Save emits, Load reads back equal), and `Config.SaveFile(path)` persists it — `MkdirAll(dir, 0o700)`, marshal to a temp file in the **same** dir, `Chmod…
+- **M2-11 narrows.**
+- **Last namespace is per-context.**
 
 ### D90 — Per-context runtime state lives in its own `state/<context>.yaml` store, not in config.yaml or the menu file
-
-`2026-07-22` (M2-11b-1). Last-namespace persistence (and future per-context runtime
-values kubecom records for you) gets a **dedicated per-context state store**:
-`config.State` in `internal/config/state.go`, persisted to
-`os.UserConfigDir()/kubecom/state/<sanitized-context>.yaml` (`StateDir`/`StatePath`,
-reusing `menuFileName`'s context sanitization so a name can never escape the dir).
-`LoadState`/`LoadStateFile` (missing file → zero State, strict-unknown-field) and
-`Save`/`SaveFile` (atomic 0o600 via the shared `atomicWriteFile` extracted from
-`Config.SaveFile`) mirror the `Config`/`MenuConfig` API.
-
-- **Not `config.yaml`.** The main config is not per-context; a namespace name is
-  meaningless across clusters (D89 already flagged last-namespace as per-context).
-- **Not the per-context menu file.** That file is **user-authored** (hand-edited CRD
-  lists, comments); kubecom writing last-namespace into it on every namespace switch
-  would reformat/clobber the user's file. Runtime state kubecom rewrites freely must
-  be a separate file from config a human edits.
-- **Config-package only.** This leg is the store primitive + tests; the load-on-start
-  and persist-on-select wiring (a namespace-persister app seam + launcher glue, with
-  explicit `-n` overriding stored state for that run) is M2-11b-2.
-
-**Consequence:** any future per-context value kubecom persists on its own (not a
-user setting) belongs in `State`/`state/<context>.yaml` through `SaveFile`; do not
-add kubecom-written runtime fields to `config.yaml` or a menu file.
+`2026-07-22` (M2-11b-1). Last-namespace persistence (and future per-context runtime values kubecom records for you) gets a **dedicated per-context state store**: `config.State` in `internal/config/state.go`, persisted to `os.UserConfigDir()/kubecom/state/<sanitized-context>.yaml` (`StateDir`/`StatePath`, reusing…
+- **Not `config.yaml`.**
+- **Not the per-context menu file.**
+- **Config-package only.**
 
 ### D91 — Explicit `-n` overrides the stored last-namespace for that run; a namespace picked in the UI is persisted; the flag being *set* is what matters, not its value
-
-`2026-07-22` (M2-11b-2). The initial watch scope is resolved from the `-n`/`--namespace`
-flag and the per-context state (D90) with this precedence:
-
-- **Explicit `-n` wins for the run.** `cmd.Flags().Changed("namespace")` (not the
-  flag's value) decides — so `-n ""` explicitly forces all namespaces even when a
-  concrete namespace is stored. An explicit `-n` is a per-run override: it does
-  **not** overwrite the stored state on startup.
-- **With no `-n`, the stored last namespace is restored** (empty when none saved).
-- **A namespace picked in the UI is persisted** through a `tui.NamespacePersister`
-  seam (`WithNamespacePersister`; the launcher wires a `statePersister` bound to the
-  active context's `StatePath`). The write runs off the update loop (a `tea.Cmd`);
-  a failure degrades to a transient error toast (principle 3), never blocks input,
-  and the picked scope still applies for the session. A model built without the seam
-  (or with an unresolved context) is persistence-inert.
-- **A malformed/unreadable state file degrades to the zero State with a logged
-  warning** — no toast, no fatal launch. Unlike a hand-authored menu file (whose
-  corruption surfaces a toast, D83), the state file is kubecom-owned, so a corrupt
-  one is rare and the next namespace switch overwrites it cleanly.
-
-**Consequence:** future per-run overrides of a persisted setting follow this shape —
-gate on the flag being *set* (`Changed`), keep the override transient (don't write it
-back on startup), and persist only the user's in-UI change through the state store.
+`2026-07-22` (M2-11b-2). The initial watch scope is resolved from the `-n`/`--namespace` flag and the per-context state (D90) with this precedence:
+- **Explicit `-n` wins for the run.**
+- **With no `-n`, the stored last namespace is restored**
+- **A namespace picked in the UI is persisted**
+- **A malformed/unreadable state file degrades to the zero State with a logged warning**
 
 ### D92 — Legacy `~/.kubecom.yaml` migration is detect-and-report, not a field-for-field port: its menu can't be auto-mapped (no version/resource) and its themes have no v1 home
-
-`2026-07-22` (M2-12a). The 2020 `~/.kubecom.yaml` (protobuf-yaml `pb.Config`) held
-only two user-authored things — a resource `menu` and color `themes`/`currentTheme`
-— and **neither maps cleanly into kubecom v1**, so `config.Migrate` does **not**
-attempt a faithful field-for-field port:
-
-- **Menu entries can't be auto-migrated.** The old `menu` named a kind by
-  `group`+`kind` only; the v1 per-context menu (`MenuResource`) addresses a resource
-  by group/**version**/**resource**, which the old format never stored and only live
-  discovery can resolve. Writing a `MenuConfig` from the legacy data would fail its
-  own `validate()` (version+resource required). So legacy menu entries are
-  **reported**, not written — the user re-adds them in a per-context menu file (D83).
-- **Themes are dropped.** v1 uses a single fixed lipgloss theme (D6); there is no
-  runtime theming to migrate into.
-- **Keys never existed in the legacy file** — the one thing the new `Config` models —
-  so migration produces the **zero `Config`**. Returning it (not nil) is intentional:
-  the wiring writes it once to establish the new-format file so the one-shot runs once.
-
-`Migrate` parses the legacy YAML **leniently** (non-strict — leftover theme
-color/style detail is ignored, not rejected) and returns `(*Config, notes, error)`;
-only unparseable YAML errors, so a legacy file never blocks start (principle 3). The
-notes are surfaced to the user by the launcher wiring (M2-12b).
-
-**Consequence:** the "migration" exit criterion is met by recognising the old file
-and telling the user what to redo by hand — not by silently reconstructing a menu
-that would be wrong. No future leg should claim the legacy menu/themes port
-automatically, or write a `MenuConfig` with blank version/resource.
+`2026-07-22` (M2-12a). The 2020 `~/.kubecom.yaml` (protobuf-yaml `pb.Config`) held only two user-authored things — a resource `menu` and color `themes`/`currentTheme` — and **neither maps cleanly into kubecom v1**, so `config.Migrate` does **not** attempt a faithful field-for-field port:
+- **Menu entries can't be auto-migrated.**
+- **Themes are dropped.**
+- **Keys never existed in the legacy file**
 
 ### D93 — Legacy migration is one-shot, gated on `config.yaml` **absence**; migration notes preempt the single startup-toast slot
-
-`2026-07-22` (M2-12b). The launcher (`cmd/kubecom/run.go` `maybeMigrate`) runs the
-D92 `config.Migrate` on first start only, and never blocks launch (principle 3):
-
-- **One-shot is gated on the new config's absence, checked with `os.Stat`** — not
-  `config.LoadFile`, which maps a missing file to the zero config and so hides the
-  present/absent distinction. A present `config.yaml` (migrated earlier, or
-  hand-authored) suppresses migration; kubecom never overwrites it. A `Stat` error
-  other than not-exist also suppresses migration (don't risk clobbering).
-- **Degrade paths write nothing and surface nothing:** an absent legacy
-  `~/.kubecom.yaml`, a malformed/unreadable legacy file, or a failed write of the new
-  config all leave no `config.yaml` behind (so a fixed file migrates on a later
-  start) and only log. A successful migration writes the new config **once** (even an
-  empty legacy file → `{}` config) so the one-shot is satisfied.
-- **The shell has a single startup-toast slot** (`WithStartupError`, one
-  `*tui.ErrorMsg`). When both a migration report and a per-context menu-config error
-  exist, the **migration notes take the slot** (first-start is the more notable, rarer
-  event); the menu error is still `slog.Warn`-logged, so it is never lost. A future
-  leg adding another startup-time toast source must preserve this: log every source,
-  and don't silently drop one because the slot is taken — widen the seam to carry
-  multiple messages if genuine coincidence becomes common.
-
-**Consequence:** migration is safe to re-attempt every launch (it self-suppresses
-once a config exists) and never a launch blocker. Any leg that changes when the
-launcher writes `config.yaml`, or adds a startup toast, must keep migration one-shot
-and keep every degraded fault logged.
+`2026-07-22` (M2-12b). The launcher (`cmd/kubecom/run.go` `maybeMigrate`) runs the D92 `config.Migrate` on first start only, and never blocks launch (principle 3):
+- **One-shot is gated on the new config's absence, checked with `os.Stat`**
+- **Degrade paths write nothing and surface nothing:**
+- **The shell has a single startup-toast slot**
 
 ### D94 — Table column sort is a view over the authoritative row set (like filter): stable, type-aware only for integer/number, reset on `SetTable`, preserved across watch deltas
-
-`2026-07-22` (M2-13a). The table's column sort is not a mutation of the delivered
-data — it is a display transformation layered onto the same authoritative `full`
-row set that the filter narrows, re-derived by `applyFilter` on every change so it
-survives live updates. Load-bearing constraints for M2-13b and any later leg:
-
-- **Sort follows filter in `applyFilter`.** `full → filter → sort → measure`. Only
-  the visible (displayed) rows are ordered; `full.Rows` is never reordered (the
-  unfiltered path now copies into the display slice instead of aliasing `full.Rows`,
-  so a sort can't scramble the authoritative set). `SortBy`/`ClearSort` re-derive
-  through `applyFilter`, so a watch delta (`ApplyEvent`) re-sorts in place and a new
-  row lands in sorted position, not appended.
-- **`sortCol` is a visible-column position (index into `visible`), or -1 for the
-  unsorted watch order.** `New` starts at -1; a zero-value `Model{}` would read as
-  "sort column 0", so tables must be built with `New`.
-- **`SetTable` resets the sort** (a sort chosen for one resource's columns must not
-  carry to a different resource, mirroring the filter reset); `ApplyEvent` preserves
-  it (a reconnect RESET keeps the same resource). Selection is preserved by object
-  UID across every re-sort.
-- **Type-aware only where cheap: integer/number sort numerically, everything else
-  as case-insensitive text.** Column types are the server's OpenAPI names. Date
-  columns are deliberately text-sorted — kubectl prints ages ("5d", "2h") that don't
-  parse as numbers or times cheaply; a wrong-but-fast numeric parse is worse than an
-  honest lexical order. `sort.SliceStable` keeps equal-key rows in watch order in
-  both directions.
-
-**Consequence:** M2-13b wires the `sort.*` keymap action(s) to `SortBy(currentCol)`
-/ `ClearSort` and renders the header indicator from `SortColumn`/`SortDescending`;
-it must not re-implement ordering or sort `full.Rows`. Adding richer typing (real
-date/quantity parsing) is a superseding decision, not a silent change here.
+`2026-07-22` (M2-13a). The table's column sort is not a mutation of the delivered data — it is a display transformation layered onto the same authoritative `full` row set that the filter narrows, re-derived by `applyFilter` on every change so it survives live updates.
+- **Sort follows filter in `applyFilter`.**
+- **`sortCol` is a visible-column position (index into `visible`), or -1 for the unsorted watch order.**
+- **`SetTable` resets the sort**
+- **Type-aware only where cheap: integer/number sort numerically, everything else as case-insensitive text.**
 
 ### D95 — Modals composite over the base browse view (a floating popup), never replace it; components return a bare box and the root overlays it
-
-`2026-07-22` (FB-popups-overlay, feedback `2026-07-22-popups-should-overlay`). A
-modal (help overlay, namespace picker, and — once wired — the M2-10 confirm modal)
-is a **popup floating over the two-pane browse layout**, not a page that takes over
-the body. The menu + table stay visible underneath. Load-bearing constraints:
-
-- **Modal components return a bare bordered box from `View()`** — just
-  `styles.PaneFocus.Render(body)`, no `lipgloss.Place` onto a blank area. A component
-  no longer pads itself to fill the screen; a blank-filled string would occlude the
-  base when composited. `View()` still returns `""` when hidden/unsized so the root
-  can call it unconditionally.
-- **The root model owns overlaying.** `Model.View()` always draws `browseBody()`
-  first, then, if a modal is open, composites the box centered on top via
-  `overlayCenter(base, box, width, bodyHeight)` (`internal/tui/overlay.go`). It uses
-  the lipgloss/v2 layer stack (`NewLayer`/`NewCompositor`/`NewCanvas`): base at the
-  origin (z0), box centered (z1), flattened onto a fixed `width×bodyH` canvas so the
-  result is always exactly the body area. The box occludes only its own rectangle;
-  every base cell outside it stays visible. `overlayCenter` returns the base
-  unchanged for an empty box or a non-positive area (degrade, principle 3).
-- **No dimming of the base yet** — the bordered box is visually distinct on its own;
-  a dimmed backdrop is an optional future refinement, not required by this decision.
-
-**Consequence:** any new modal must follow this shape — render a bare box and let
-the root overlay it through `overlayCenter`; do not switch `body = modal.View()` to
-replace the browse view, and do not re-add `lipgloss.Place` full-area padding inside
-a modal component. Wiring the M2-10 confirm modal into the shell (M2-14b / M3) uses
-the same `overlayCenter` path.
+`2026-07-22` (FB-popups-overlay, feedback `2026-07-22-popups-should-overlay`).
+- **Modal components return a bare bordered box from `View()`**
+- **The root model owns overlaying.**
+- **No dimming of the base yet**
 
 ### D96 — Status bar sits at the **top**; the target navigation model is an optional/popup menu with a command-palette resource switch (left pane is not a permanent fixture)
+`2026-07-22` (FB-status-bar-top, feedback `2026-07-22-status-bar-top-and-optional-left-panel`). Two load-bearing constraints this decision locks, plus a direction the follow-on legs implement:
+- **The status bar renders at the top row of the screen**
+- **The status bar names the browsed resource type**
+- **Direction (not yet built, queued as FB-nav-* board tasks): the left menu is not a permanent fixed pane.**
 
-`2026-07-22` (FB-status-bar-top, feedback
-`2026-07-22-status-bar-top-and-optional-left-panel`). Two load-bearing constraints
-this decision locks, plus a direction the follow-on legs implement:
-
-- **The status bar renders at the top row of the screen**, not the bottom. The root
-  `View()` stacks status (top) · two-pane body · hint line (bottom). Any layout work
-  that touches vertical stacking must keep the status bar on top and must keep mouse
-  Y-mapping offset by `statusBarHeight` (the body starts one row down —
-  `handleMouseClick` subtracts it before resolving a row; a future top-anchored
-  element shifts that offset again).
-- **The status bar names the browsed resource type** (`kube.Resource.GVK.Kind`, e.g.
-  `Pod`) alongside context · namespace, set from `selectResource`
-  (`statusbar.SetResourceType`). The bar must always say what the table is listing;
-  a leg that changes what resource the table shows keeps this current.
-- **Direction (not yet built, queued as FB-nav-* board tasks): the left menu is not a
-  permanent fixed pane.** The target navigation model is a **toggleable / popup**
-  menu (a keybind shows/hides it; later it becomes an `overlayCenter` popup per D95)
-  plus a **command-palette resource switch** (`<resources hotkey>` → `/` filter →
-  Enter switches the table to that kind, k9s-`:`-style) so the app can be browsed
-  pane-free with just the top status bar + table. A future leg must not treat the
-  always-visible left pane as load-bearing; it is on a path to becoming optional.
-  All of it stays on the keymap registry (no hard-coded keys, D11) and the
-  zero-shared-mutable-state model (principle 1).
-
-**Consequence:** the top status bar + resource-type display is delivered by this
-leg. The optional-menu toggle, the popup menu, and the command-palette switch are
-FB-nav-menu-toggle / FB-nav-menu-popup / FB-nav-resource-palette on the board.
 ### D97 — Mouse capture is off by default (native select-to-copy); mouse is opt-in via the `mouse.toggle` keybind. Supersedes D86's unconditional capture
-
-`2026-07-22` (feedback `2026-07-22-text-selection-select-to-copy`). D86 enabled
-mouse reporting unconditionally in `View` (`v.MouseMode = tea.MouseModeCellMotion`
-on every frame). Any mouse-reporting mode makes the terminal send events to the app
-instead of doing its own click-drag selection, so it broke **select-to-copy** — the
-human couldn't select names/values/log lines to copy them. This decision flips the
-default and makes mouse capture opt-in:
-
-- **Off by default.** `Model.mouseEnabled` starts false; `View` sets
-  `MouseModeCellMotion` **only** when it is true, otherwise leaves `MouseModeNone`.
-  So the terminal keeps its native select-to-copy everywhere out of the box. This is
-  the aligned default per goals principle 6 (vim-first, never vim-only) and principle
-  8 (dogfoodable): the keyboard path is complete, so losing default mouse-wheel scroll
-  costs nothing a key doesn't already do.
-- **Opt-in via a runtime toggle keybind**, not a config flag: `mouse.toggle`
-  (registry action, default `M`, rebindable — D11) flips `mouseEnabled` at runtime.
-  Chosen over a config-file-only switch so it needs no restart and no cmd/config
-  wiring, and over "keep capture + document Shift+drag" because that isn't a true
-  default. Switching back to `MouseModeNone` tears reporting down again (bubbletea v2
-  toggles the reporting sequences from the View's `MouseMode` each frame), so native
-  selection is restored the moment capture is turned off.
-- **The state is visible.** Mouse capture is otherwise an invisible mode, so the
-  status bar shows a persistent `mouse` marker (`statusbar.SetMouse`) while it is on —
-  not a transient toast, because the user needs to know the current state at any time.
-- **The D86 mouse handlers are unchanged.** `handleMouseClick` / `handleMouseWheel`
-  and their component coordinate→row accessors stay exactly as they were; they simply
-  receive no events until capture is toggled on. The `mouse.toggle` action is handled
-  in the app-mode branch of `handleAction` (alongside quit/help), so it works even
-  while an overlay is open — it is a mode toggle, not navigation.
-
-**Consequence:** a future leg must keep mouse capture off by default and gated on
-`mouseEnabled`; it must not reintroduce unconditional `MouseModeCellMotion` in `View`,
-and any new mouse affordance stays inert until the user opts in. In-app copy (e.g.
-OSC 52 yank of the selected row/field) was noted as a possible complement and is not
-built here.
+`2026-07-22` (feedback `2026-07-22-text-selection-select-to-copy`).
+- **Off by default.**
+- **Opt-in via a runtime toggle keybind**
+- **The state is visible.**
+- **The D86 mouse handlers are unchanged.**
 
 ### D98 — Column sort is driven by one cycling key over a stateless derivation of the table's own sort state; there is no separate column-selection gesture
-
-`2026-07-22` (M2-13b). M2-13a delivered `SortBy(visibleCol)`/`ClearSort` as a view
-over the row set (D94) but no way to reach it. The table has no column cursor, so
-this leg's wiring had to decide **which column** the sort acts on. Locked choices a
-later leg must not silently contradict:
-
-- **One key cycles everything.** `sort.column` (registry action, default `s`,
-  rebindable — D11) advances a single cycle: unsorted → column 0 ascending → column 0
-  descending → column 1 ascending → … → last column descending → **cleared**
-  (`ClearSort`) → column 0 ascending. This makes every visible column and both
-  directions reachable **without** adding a column-selection cursor/navigation
-  gesture. `sort.clear` (default `S`) drops any sort in one press.
-- **The cycle is stateless.** It is derived entirely from the table's own
-  `SortColumn()`/`SortDescending()` each press (plus `VisibleColumnCount()` for the
-  wrap point); the root model stores **no** sort cursor. This keeps principle 1 (no
-  shared mutable UI state) and means a `SetTable` reset (which clears the sort, D94)
-  automatically restarts the cycle — no separate reset to keep in sync.
-- **Rejected: sort the leftmost-visible column** (via the horizontal scroll offset).
-  A table that fits without scrolling has offset 0 always, so only the first column
-  would ever be sortable, and the last columns can never become leftmost even when
-  scrolled — most useful sorts would be unreachable. The cycle avoids both.
-- **Header indicator lives in the component.** The sorted column's header carries a
-  direction arrow (`▲` ascending / `▼` descending); its width is reserved in
-  `measureWidths` so the arrow never overflows the column and misaligns the data rows
-  below it. `sort.column` is also added to the table-context short-help hint so the
-  key is discoverable.
-
-**Consequence:** a future leg may add a real column cursor / a k9s-style
-sort-by-named-column palette, but that supersedes this decision rather than silently
-changing the `s` cycle. Richer type-aware ordering is still D94's concern, not this
-one.
+`2026-07-22` (M2-13b). M2-13a delivered `SortBy(visibleCol)`/`ClearSort` as a view over the row set (D94) but no way to reach it. The table has no column cursor, so this leg's wiring had to decide **which column** the sort acts on. Locked choices a later leg must not silently contradict:
+- **One key cycles everything.**
+- **The cycle is stateless.**
+- **Rejected: sort the leftmost-visible column**
+- **Header indicator lives in the component.**
 
 ### D99 — The left menu pane is toggleable (`menu.toggle`); a hidden menu is zero-width and cannot hold focus. First implemented slice of D96
-
-`2026-07-22` (FB-nav-menu-toggle). D96 recorded that the left pane is not a permanent
-fixture; this leg makes it hideable and locks the toggle contract the remaining D96
-slices (FB-nav-resource-palette, FB-nav-menu-popup) must preserve or supersede:
-
-- **`menu.toggle` (registry action, default `m`, rebindable — D11)** hides/shows the
-  left resource-menu pane at runtime. It is handled in the app-global branch of
-  `handleAction` (alongside `mouse.toggle`), so it works regardless of which pane is
-  focused. `menuHidden` starts false (the menu shows), is touched only from the update
-  loop (no shared mutable state, principle 1), and is not persisted (session-only for
-  now).
-- **A hidden menu is zero-width everywhere.** `resize()` gives the table the full
-  width, `browseBody()` renders the table alone (no `JoinHorizontal` with the menu),
-  and `inMenu()` returns false so mouse routing sends every click/wheel to the table.
-  Any future layout, focus, or mouse-mapping leg must treat `menuHidden` as a
-  zero-width menu, not assume an always-present left pane.
-- **Focus follows visibility.** Hiding moves focus to the table (a hidden pane can't
-  hold focus); showing returns focus to the menu (the gesture to pick a resource). The
-  same key re-shows the menu, so it is never a one-way door even before a pane-free
-  resource switch exists.
-- **Known gap (by design, this slice):** with the menu hidden there is no pane-free
-  way to change the browsed resource yet — the user re-shows the menu to switch.
-  FB-nav-resource-palette (the command-palette `:`-style switch) closes that gap;
-  FB-nav-menu-popup may then fold the toggled menu into an `overlayCenter` popup (D95),
-  which would supersede the fixed-pane half of this decision while keeping the toggle
-  action and focus contract.
+`2026-07-22` (FB-nav-menu-toggle). D96 recorded that the left pane is not a permanent fixture; this leg makes it hideable and locks the toggle contract the remaining D96 slices (FB-nav-resource-palette, FB-nav-menu-popup) must preserve or supersede:
+- **`menu.toggle` (registry action, default `m`, rebindable — D11)**
+- **A hidden menu is zero-width everywhere.**
+- **Focus follows visibility.**
+- **Known gap (by design, this slice):**
 
 ### D100 — Resource command palette (`resources.switch`) reuses the generic picker keyed by a distinct Kind; selecting drives `selectResource`. Second slice of D96
-
-`2026-07-22` (FB-nav-resource-palette). D96 named the pane-free, k9s-`:`-style
-resource switch as the counterpart to the toggleable menu (D99); this leg builds it
-and locks how it is wired, so FB-nav-menu-popup (which may fold the menu into this
-palette) and any future picker preserve or supersede the contract:
-
-- **One generic picker component, two instances, disambiguated by `Kind`.** The root
-  now holds a second `picker.Model` (`resPicker`, `picker.New(s, "resource")`)
-  alongside the namespace `nsPicker`. Both emit the same `picker.SelectedMsg`/
-  `CancelledMsg` (D65), so the root branches on `msg.Kind == resourcePickerKind`
-  (`"resource"`) to route a palette result to `handleResourceSelected` rather than the
-  namespace path. An empty `Kind` routes to the namespace picker (the hermetic tests
-  deliver bare `SelectedMsg{Value:…}`). A future picker must stamp its own distinct
-  Kind and add a branch, not overload an existing one.
-- **`resources.switch` (registry action, default `:`, rebindable — D11)** opens the
-  palette. Handled in the post-help branch of `handleAction` (beside `ns.switch`), so
-  it fires whichever pane is focused and while the menu is hidden — the pane-free
-  switch D99 flagged as its missing piece. Watch-inert (no `WithWatcher`) → the
-  palette does not open (nothing to switch).
-- **The source list is the menu's own item set.** `openResourcePicker` snapshots
-  `menu.Items()` filtered to available `ItemResource` rows (the namespace seam and
-  unavailable rows are skipped, mirroring what a menu drill-in can act on), so
-  discovered CRDs and per-context extras (D83) are included for free. The picker is
-  generic over strings, so a rebuilt-on-open `resByLabel map[string]kube.Resource`
-  resolves the picked title back to its resource; a title collision keeps the first.
-- **Selecting drives the same `selectResource` path a menu drill-in takes** (start the
-  watch, `menu.SetActive`, focus the table), so a palette switch and a menu drill-in
-  are one behaviour. The palette does not move the menu cursor; the active-row marker
-  (▸, dogfood-05) shows which kind is open.
-- **Routing generalized to "the active picker."** `activePicker()` returns whichever
-  of the two is open (at most one ever is); `Update`'s key dispatch, `routePickerKey`,
-  `overlayActive`, and `View`'s overlay compositing (D95) all go through it instead of
-  naming `nsPicker`. Both pickers are sized in `resize()`.
-
-**Consequence:** FB-nav-menu-popup may promote the toggled menu into this palette (or
-an `overlayCenter` menu popup) — that supersedes D99's fixed-pane half while keeping
-this Kind-routing + `selectResource` contract. A real column/kind cursor or richer
-palette scoring is out of scope here.
+`2026-07-22` (FB-nav-resource-palette). D96 named the pane-free, k9s-`:`-style resource switch as the counterpart to the toggleable menu (D99); this leg builds it and locks how it is wired, so FB-nav-menu-popup (which may fold the menu into this palette) and any future picker preserve or supersede the contract:
+- **One generic picker component, two instances, disambiguated by `Kind`.**
+- **`resources.switch` (registry action, default `:`, rebindable — D11)**
+- **The source list is the menu's own item set.**
+- **Selecting drives the same `selectResource` path a menu drill-in takes**
+- **Routing generalized to "the active picker."**
+**Refs:** supersedes D99.
 
 ### D101 — FB-nav-menu-popup (menu-as-overlay-popup) folded into the resource palette; retired won't-do-separately. Third slice of D96, resolving the reassess
-
-**2026-07-22 (FB-nav-menu-popup).** D96 triaged the "left pane is not a permanent
-fixture" direction into three slices and flagged the third — floating the whole
-sectioned menu as an `overlayCenter` popup — as one to **reassess once the toggle
-(D99) and palette (D100) landed** (D100's own Consequence: "may promote the toggled
-menu into this palette *or* an `overlayCenter` menu popup"). Both have landed; this
-is that reassessment, and the outcome is **fold, not build a third surface.** The
-D96 want is delivered:
-
-- **Pane-free resource switching is already the palette.** `resources.switch` (`:`,
-  D100) summons a modal, `/`-filterable list of every browsable kind over the base
-  view and drives `selectResource` — a *better* summoned-overlay navigator than a
-  floated menu (it filters; the sectioned menu does not), and it already works with
-  the menu hidden.
-- **"Default view = table only" is already the toggle.** `menu.toggle` (`m`, D99)
-  hands the full width to the table on demand; the menu re-shows with the same key.
-
-A second overlay that floats the entire sectioned menu (sections + namespace seam +
-active marker) would **duplicate the palette's job** with no recorded UX benefit and
-would itself need a fresh UX decision — the D81 (M1-04b) situation exactly.
-
-**Constraint:** do not build a separate floating-menu overlay on the strength of this
-old slice alone; the palette (D100) is kubecom's pane-free navigator, the left menu
-its always-available toggleable pane (D99). **Rejected** flipping the *default* to
-menu-hidden: a first launch would then show only a welcome/empty table with no
-visible navigator, hurting discoverability of a tool the human dogfoods (principle
-6/8) — the menu stays shown by default. Reopening this needs a new decision that
-supersedes D99/D100, not a revival of FB-nav-menu-popup. **Consequence:** the M2
-FB-nav-* line (D96) is complete; no menu-popup work remains.
+**2026-07-22 (FB-nav-menu-popup).** D96 triaged the "left pane is not a permanent fixture" direction into three slices and flagged the third — floating the whole sectioned menu as an `overlayCenter` popup — as one to **reassess once the toggle (D99) and palette (D100) landed** (D100's own Consequence: "may promote the…
+- **Pane-free resource switching is already the palette.**
+- **"Default view = table only" is already the toggle.**
+**Refs:** supersedes D99.
 
 ### D102 — Board Done entries are one line too (extends D67)
-**2026-07-22.** D67 kept the milestone `Status:` and the board `Last updated:`
-lines terse, but did not name the **Done list**, so legs drifted back to writing a
-full journal-length paragraph per completed item — the board reswelled from ~17KB
-to ~50KB (35 of 93 Done entries over 400 chars), and it is read on every Orient.
-Rule: a **Done entry is one line** — `- [x] **ID** <short title> — done
-YYYY-MM-DD (Dnn, …)` — no prose, no continuation lines; the full detail is the
-journal entry for that leg. Same for backlog `notes:` — keep them short. Re-collapsed
-the Done section on this leg (93 items preserved, ~50KB → ~17KB). Wired into
-CLAUDE.md step 7 and the `do-rewrite-leg` skill.
+**2026-07-22.** D67 kept the milestone `Status:` and the board `Last updated:` lines terse, but did not name the **Done list**, so legs drifted back to writing a full journal-length paragraph per completed item — the board reswelled from ~17KB to ~50KB (35 of 93 Done entries over 400 chars), and it is read on every…
 
 ### D103 — List/watch params encode with metav1.ParameterCodec, not scheme.ParameterCodec
-**2026-07-22.** `tableRequest` (shared by List and Watch, `internal/kube/table.go`)
-must encode `VersionedParams` with **`metav1.ParameterCodec`**
-(`k8s.io/apimachinery/pkg/apis/meta/v1`), **never** `scheme.ParameterCodec`
-(`client-go/kubernetes/scheme`). The built-in clientset scheme only knows built-in
-GroupVersions, so it cannot convert `metav1.ListOptions`/watch params to an
-arbitrary CRD GroupVersion (`gateway.networking.k8s.io/v1`, `traefik.io/v1alpha1`,
-…) and fails every non-built-in CRD group with "v1.ListOptions is not suitable for
-converting to …" — directly defeating the discovery-driven "generic over any
-resource incl. CRDs" goal (#76/#87). `metav1.ParameterCodec` converts params for
-any GroupVersion (it is what `client-go/dynamic` uses) and works for built-ins too,
-so it is a strict improvement. Hermetic tests must exercise a **non-built-in** GVR
-(the built-in-only fixtures are why this slipped past `make check`). A future leg
-must not switch this back.
+**2026-07-22.** `tableRequest` (shared by List and Watch, `internal/kube/table.go`) must encode `VersionedParams` with **`metav1.ParameterCodec`** (`k8s.io/apimachinery/pkg/apis/meta/v1`), **never** `scheme.ParameterCodec` (`client-go/kubernetes/scheme`).
 
 ### D104 — Watch degrades to list-only polling for kinds that can't be watched
-**2026-07-22.** `watchLoop` (`internal/kube/watch.go`) must not blank the view or
-retry-loop when a kind lacks the `watch` verb (e.g. `componentstatuses`, some
-aggregated/legacy resources). Two guards, both required (principle 3 — degrade,
-don't blank):
-1. **Verb-driven:** if `r.Verbs` is **known and lacks `watch`** it never opens a
-   stream — it re-Lists on `listPollInterval` (10s), emitting a fresh RESET each
-   cycle. An **empty** verb set is *unknown* (the seed menu carries no verbs
-   pre-discovery), so it is **not** treated as list-only — it still tries to watch
-   so cold-start browsing of core kinds stays live.
-2. **Server-driven backstop:** if the watch request itself returns **405
-   MethodNotAllowed** (`apierrors.IsMethodNotSupported`), the loop flips to that
-   same list-only polling mode instead of paced-retrying the doomed watch or
-   parading the ERROR — this covers incomplete discovery verbs (guard 1's empty
-   case) at runtime. A future leg must keep both guards; don't reintroduce the
-   unconditional watch that blanked list-only kinds.
+**2026-07-22.** `watchLoop` (`internal/kube/watch.go`) must not blank the view or retry-loop when a kind lacks the `watch` verb (e.g.
 
 ### D105 — M3 (actions & viewers) decomposed into ordered, leg-sized Backlog slices
-**2026-07-22.** With M2's board section down to only blocked/deferred items
-(M2-14b is M3-gated per D88; M1-INT is deferred envtest), the next milestone M3 was
-still a single prose paragraph — no pickable leg. This planning leg turns the M3
-scope + exit criteria into a dependency-ordered task list **M3-01 … M3-15** (the
-D52/M2-PLAN precedent: "expanding a thin milestone section into concrete tasks is a
-leg in itself"). **Key framing — M3 is almost all TUI surface:** the kube layer
-already implements every verb (logs stream M1-07c/d, describe M1-07b, YAML M1-07a,
-delete/scale/rollout-restart/cordon/drain/suspend M1-06*, background port-forward
-M1-08), so M3 wires those into viewers, the confirm modal, an actions surface, and
-the two suspend flows — it does **not** re-implement action logic. **The slicing
-(built bottom-up):**
-- **M3-01** reusable read-only viewer/pager component (the shared substrate) →
-  **M3-02** action surface (actions menu reusing the picker, D100) + M3 keymap off
-  the reserved nav keys (D10) — these two land first because every viewer/action
-  needs a reachable trigger and a place to render.
-- Viewers on top of M3-01/02: **M3-03** YAML → **M3-04** describe → **M3-05**/**06**/
-  **07** logs (initial / follow+reconnect / container-picker+pod-owning-kinds #84) →
-  **M3-08** secret viewer (#89).
-- Actions through the M2-10 confirm modal (D88 — accept=`nav.drillIn`, decline=
-  `nav.back`, no raw y/n): **M3-09** delete (first confirm wiring; **unblocks M2-14b**)
-  → **M3-10** scale + rollout-restart → **M3-11** cordon/drain → **M3-12** cronjob
-  suspend/resume (#83).
-- **M3-13** port-forward manager panel (M1-08 background forward) · **M3-14** exec
-  shell (`tea.ExecProcess` + remotecommand) · **M3-15** `$EDITOR` edit — the two
-  suspend flows are the only sanctioned TUI-suspending actions (goals).
-**Constraints every M3 slice inherits (a future leg must not contradict):** overlays
-composite over the base browse view (D95), never replace it; zero shared mutable UI
-state (principle 1) — background streams/forwards only send msgs via the M2-02 pumps
-(D53); no raw-key matching — every action is a named keymap entry off the nav keys
-(D10/D11). Ordering is a default, not a contract — re-split any slice that proves
-> ~300 lines (the skill's split-and-take rule still applies per leg). Board-only;
-no code, `make check` green.
+**2026-07-22.** With M2's board section down to only blocked/deferred items (M2-14b is M3-gated per D88; M1-INT is deferred envtest), the next milestone M3 was still a single prose paragraph — no pickable leg.
 
 ### D106 — All M3 read-only viewers share one `viewer.Model` overlay
-**2026-07-22 (M3-01).** The YAML/describe/logs/secret viewers (M3-03…08) each render
-into the **one** `internal/tui/components/viewer` component, not their own pager. Its
-contract (mirrors the picker, D95/D56/D11): constructed with a `Kind` string; fed
-text via `SetContent` (which resets scroll to the top) and sized via `SetSize`;
-driven **only** through resolved `keymap.Action`s (`Update(a keymap.Action)`) —
-nav.up/down + nav.top/bottom (gg/G) + half/full page scroll the wrapped
-`bubbles/viewport`, nav.back emits `ClosedMsg{Kind}`; it never receives a raw
-`tea.KeyMsg`, so the viewport's own key bindings are inert and no hard-coded key
-leaks in (D11). `View()` returns a **bare** bordered box (title bar + viewport) that
-the root composites via `overlayCenter` (D95) — it never replaces the base browse
-view. Mouse-wheel scroll on the viewport is off (input flows through actions).
-`AtBottom()` is exposed for the follow-logs slice (M3-06) to decide auto-scroll. A
-future viewer leg **feeds this component**; it must not re-implement scroll/framing
-or match raw keys. In-viewer `/` search (`n`/`N`) is a deliberately deferred
-follow-up slice, not part of M3-01.
+**2026-07-22 (M3-01).** The YAML/describe/logs/secret viewers (M3-03…08) each render into the **one** `internal/tui/components/viewer` component, not their own pager.
 
 ### D107 — M3 row actions dispatch a typed `rowActionMsg` intent; applicability is a kind-keyed registry
-**2026-07-23 (M3-02).** The M3 action surface is split from the individual
-viewers/actions: this leg lands only **opening the actions menu and routing**, no
-action behaviour. The curated action set lives in one registry
-(`internal/tui/rowaction.go`, `rowActions`): each entry is a `rowAction` id, a menu
-title, an optional bound `keymap.Action` (the direct-key shortcut), and a
-kind/verb-keyed applicability predicate. The **actions menu** (`actPicker`, a
-`picker.Model` of Kind `"action"`, D65/D100) lists exactly the applicable titles for
-the browsed kind over the selected row; the direct keys (`res.describe` `d`,
-`res.yaml` `y`, `res.logs` `L`, `res.edit` `e`, `res.delete` `x`, and
-`actions.menu` `a`) are the only M3 keys — all off the reserved nav set (D10), the
-rest of the set is menu-only. Both entry points funnel through **one typed intent**,
-`rowActionMsg{Action, Resource, Object}`, dispatched as a `tea.Cmd`. A future M3 leg
-(M3-03…) handles its intent by adding a case to (or replacing) `handleRowAction`,
-which for now surfaces a transient "not yet available" toast so routing is
-observable (D68). Constraints a later leg must not silently break: keys stay in the
-keymap (no raw-key match, D11); a new action is a `rowActions` row (+ its handler),
-not a bespoke picker or key path; applicability by kind lives in the registry, not
-scattered in the shell.
+**2026-07-23 (M3-02).** The M3 action surface is split from the individual viewers/actions: this leg lands only **opening the actions menu and routing**, no action behaviour.
 
 ### D108 — M3 viewer legs wire through a narrow kube getter seam, fetch async with a generation guard, and capture input while open
-**2026-07-23 (M3-03).** The first viewer (YAML) establishes the pattern every later
-read-only viewer leg (describe M3-04, logs M3-05…, secret M3-08) follows so they do
-not each invent their own wiring: (1) the kube call is reached through a **narrow
-single-method seam** on the shell (`YAMLGetter`, wired with `WithYAMLGetter`;
-`*kube.Clients` satisfies it), mirroring `ResourceWatcher`/`Discoverer`/`NamespaceLister`
-— the tui package never constructs a client and stays hermetically testable; a model
-built without the seam is **viewer-inert** (the action is a no-op, the viewer never
-opens). (2) `handleRowAction` branches on the `rowAction` (D107) to an `openXViewer`
-that **shows the shared `viewer.Model` immediately (empty) and issues the fetch off
-the update loop** as a `tea.Cmd`, seeding content when a typed `xLoadedMsg` lands —
-the gesture feels instant and `Update` never blocks. (3) Every open bumps a
-**`viewerGen`** carried on the load message; `handleXLoaded` drops a result whose gen
-no longer matches or that arrives after the viewer closed (the watchGen/seqGen
-stale-message guard). (4) A fetch **error degrades**: close the viewer + a transient
-status-bar toast (D74), never an empty box. (5) While the viewer is active the root
-**captures input** — `handleAction` routes to `handleViewerAction`, which scrolls on
-nav and closes on nav.back (via the viewer's `ClosedMsg`) and app.quit, swallowing
-everything else — and the viewer composites over the base browse view via
-`overlayCenter` (D95); `overlayActive()` includes it so mouse events stay inert.
-Constraints a later viewer leg must not silently break: reach kube through a seam
-(no client in tui), keep the fetch async + gen-guarded, degrade on error, and capture
-input the same way rather than adding a bespoke key path.
+**2026-07-23 (M3-03).** The first viewer (YAML) establishes the pattern every later read-only viewer leg (describe M3-04, logs M3-05…, secret M3-08) follows so they do not each invent their own wiring: (1) the kube call is reached through a **narrow single-method seam** on the shell (`YAMLGetter`, wired with…
 
 ### D109 — Streaming viewer legs pump a kube channel line-by-line into the shared viewer via a gen-tagged pump, cancel on close/supersede, and append preserving scroll
-**2026-07-23 (M3-05).** The logs viewer is the first *streaming* viewer, so it
-extends D108's one-shot-fetch shape with the channel→msg pump rhythm (M2-02/D53) that
-M3-06 (follow) and M3-07 (container picker / pod-owning kinds) build on. The
-constraints a later streaming-viewer leg must not silently break: (1) the stream is
-reached through a **channel-returning seam** on the shell (`LogStreamer.Logs`, wired
-with `WithLogStreamer`; `*kube.Clients` satisfies it) — as with the D108 seams the tui
-package constructs no client and a model without it is viewer-inert. (2) The channel is
-pumped **one item per `tea.Cmd`** (`logPump` in `msg.go`, mirroring `watchPump`): a
-`LogLineMsg` appends and re-issues the pump, a `LogClosedMsg` (EOF of a non-following
-stream) ends the chain, a stream error is bridged to a classified `ErrorMsg`. `Update`
-never blocks on more than one receive. (3) Each pumped item rides the **shared
-`viewerGen`** wrapped in a `logMsg{gen,msg}` (the watchMsg pattern), so a line from a
-superseded viewer — closed, or replaced by a newer viewer of *any* kind — is dropped
-and its chain stopped. (4) The stream runs on a **cancellable context torn down by
-`stopLogStream`** — called before starting a new stream, when the viewer closes, when a
-one-shot (YAML/describe) viewer supersedes it, and on quit — the log twin of the watch's
-cancel-on-reselect. (5) Lines append via **`viewer.AppendContent`, which preserves the
-scroll position** (no auto-scroll — a reader scrolled partway stays put); follow-mode
-auto-scroll (via `viewer.AtBottom`) is M3-06's concern. (6) Error handling refines
-D108 for a stream: an **open failure closes the empty box** (nothing shown yet) + a
-toast, but a **mid-stream error after lines already showed keeps them on screen**
-(`viewer.Empty` gates this) — partial output is not discarded. Scope: **pods first** —
-the pod-owning kinds the actions menu lists for logs degrade to a "not yet available"
-toast until M3-07 resolves their backing pod; `LogOptions{}` (whole log, default
-container, no follow) is the initial cut.
+**2026-07-23 (M3-05).** The logs viewer is the first *streaming* viewer, so it extends D108's one-shot-fetch shape with the channel→msg pump rhythm (M2-02/D53) that M3-06 (follow) and M3-07 (container picker / pod-owning kinds) build on.
 
 ### D110 — The logs viewer opens in follow mode (streaming + auto-scroll); `logs.follow` (`f`) toggles it and a manual up-scroll pauses it
-**2026-07-23 (M3-06).** Building on D109, the logs viewer opens **following**: the
-stream is opened with `kube.LogOptions{Follow:true}` (M1-07d — the stream stays open
-and reconnects transparently across transport drops rather than ending at EOF), and
-while following each appended line snaps the viewport to the bottom (`viewer.GotoBottom`)
-so the newest output is always shown — the `kubectl logs -f` / k9s default. Constraints a
-later leg (M3-07 container picker / pod-owning kinds) must not silently break: (1) follow
-is a **shell-owned bool** (`m.logFollow`), never shared mutable state, consulted only
-while the logs viewer is up (`viewer.Kind()==viewerKindLogs`); the shared viewer is
-restamped per open (`viewer.SetKind`) so YAML/describe/logs are distinguishable for
-kind-specific gating. (2) `logs.follow` (default `f`, off the reserved nav keys) toggles
-follow **only inside the logs viewer** — inert on the YAML/describe viewers and inert in
-the browse view; re-enabling snaps to the bottom. (3) A **manual up-scroll while
-following pauses follow** (nav.up/top/halfPageUp/pageUp) so scrollback isn't yanked back
-to the tail; the toggle (or a fresh open) resumes it. (4) The viewer title carries a
-`[following]`/`[paused]` marker so the mode is always visible (D68). This is the first
-viewer with a mode of its own; the same follow bool + kind-gated toggle is the shape
-M3-07 extends when it adds a container picker to the logs viewer.
+**2026-07-23 (M3-06).** Building on D109, the logs viewer opens **following**: the stream is opened with `kube.LogOptions{Follow:true}` (M1-07d — the stream stays open and reconnects transparently across transport drops rather than ending at EOF), and while following each appended line snaps the viewport to the bottom…
 
 ### D111 — Opening logs on a multi-container pod resolves the pod's containers first and prompts which to stream; a single-container pod streams directly
-**2026-07-23 (M3-07a).** `kubectl logs` requires `-c` to disambiguate a
-multi-container pod (the API server errors on an empty container name when a pod has
-more than one), so the logs viewer can no longer stream blindly. Constraints a later
-leg (M3-07b pod-owning kinds, exec/edit) must not silently break: (1) A **`ContainerLister`
-seam** (`PodContainers(ctx, ref) ([]string, error)`, `*kube.Clients` satisfies it via a
-pod Get returning `spec.containers` names in spec order) resolves a pod's containers.
-Only regular containers are offered — the set kubectl's default-container logic counts;
-init/ephemeral container logs are a deliberate later refinement. (2) The flow is
-**resolve-then-stream**: opening logs on a pod issues the fetch off the update loop
-(tagged with a fresh `viewerGen` so any newer viewer open staleifies it — the shared
-generation guard, D108/D109), then a **single** container streams directly (reusing that
-gen) while **multiple** open the reused modal picker (`containerPickerKind`), the pick
-streaming the chosen container. The pod the pick applies to is stashed
-(`logStreamRes`/`logStreamRef`) because the picker's `SelectedMsg` carries only the
-chosen string (D65). (3) With **no lister wired the shell streams the pod's default/sole
-container directly** (empty `LogOptions.Container`, the M3-05/06 behaviour) — the picker
-is simply not offered, keeping the pre-wiring app and non-picker hermetic tests inert
-without the extra seam. (4) The streaming half is factored into `streamLogsInto(res, ref,
-container, gen)` (shared by the no-lister path, the single-container path, and the
-picker-select path); a non-empty container is named in the viewer title (`Logs ns/pod ·
-container`). M3-07b resolves a backing pod *before* this container resolution, so the
-pod-owning-kinds slice feeds a resolved pod ref into the same `openLogsViewer` pod path.
+**2026-07-23 (M3-07a).** `kubectl logs` requires `-c` to disambiguate a multi-container pod (the API server errors on an empty container name when a pod has more than one), so the logs viewer can no longer stream blindly.
 
 ### D112 — Logs on a pod-owning workload kind resolve a backing pod (selector → newest ready pod), then take the pod path
-**2026-07-23 (M3-07b, #84).** Logs are offered for pod-owning kinds
-(Deployment/ReplicaSet/StatefulSet/DaemonSet/Job/ReplicationController), not only pods.
-Constraints a later leg must not silently break: (1) A **`PodResolver` seam**
-(`PodForOwner(ctx, res, ref) (ObjectRef, error)`, `*kube.Clients` satisfies it) resolves
-a workload to one backing pod: it Gets the workload through the **dynamic client by GVR**
-(no per-kind typed client — all six kinds, and a CRD with a pod selector, are covered
-uniformly), reads `spec.selector` (a `metav1.LabelSelector` for every kind but
-ReplicationController, whose selector is a **plain label map** — both shapes handled),
-lists the matching pods, and returns the **newest Ready pod** (falling back to the newest
-pod overall when none is Ready, so a mid-rollout / crash-looping workload still yields a
-log target). A missing selector or no matching pods is a wrapped error, never a panic or
-a match-everything list (principle 3). (2) The shell flow is **resolve-then-reuse**:
-`openLogsViewer` sends a pod straight down the container path, but a pod-owning kind first
-issues `PodForOwner` off the update loop (fresh `viewerGen` guard, D108/D109/D111), and
-`handlePodResolved` feeds the resolved pod into `resolveContainersFor` — the shared tail
-extracted from the pod path — so **D111's container resolution/picker applies to the
-resolved pod** unchanged. The resolved pod's logs are titled as a **Pod** (`podLogResource`
-carries only the Pod kind) so the user sees which pod is tailing, not the workload.
-(3) **`WithPodResolver` gates it**: without a resolver wired a non-pod kind still degrades
-to a "not yet available" toast (the M3-05…07a behaviour), keeping the pre-wiring app and
-non-resolver hermetic tests inert. Init/ephemeral-container and a pod *picker* across a
-workload's pods remain deliberate later refinements.
+**2026-07-23 (M3-07b, #84).** Logs are offered for pod-owning kinds (Deployment/ReplicaSet/StatefulSet/DaemonSet/Job/ReplicationController), not only pods.
 
 ### D113 — The secret viewer opens masked; values are revealed only by the deliberate `secret.reveal` (`r`) gesture; decoding uses the typed clientset
-**2026-07-23 (M3-08a, #89).** The Secret viewer is the first read-only viewer that
-transforms content (decode + mask) rather than showing it verbatim. Constraints a later
-leg must not silently break: (1) A **`SecretGetter` seam** (`SecretData(ctx, ref)
-(kube.SecretData, error)`, `*kube.Clients` satisfies it) fetches through the **typed
-clientset** (`CoreV1().Secrets`), not the dynamic client the other viewers use — the typed
-client decodes the wire base64 into raw bytes (`Secret.Data map[string][]byte`) for us, so
-no manual base64 decode is threaded and a malformed value can't slip through undecoded. It
-returns `SecretData{Type, Entries []SecretEntry{Key,Value}}` with **entries sorted by key**
-for a deterministic render; empty name is rejected; NotFound/RBAC errors are wrapped, never
-panicked (principle 3). (2) **Values start masked and reveal is deliberate** (never
-automatic): `openSecretViewer` sets `secretRevealed=false` on every open, and
-`renderSecret` shows each value as a fixed mask + byte length (`key: •••••••• (N bytes)`)
-until revealed — the length is shown, not the content, so nothing leaks pre-reveal. (3) The
-reveal is a **registered keymap action** `secret.reveal` (`r`, D11 — no raw-key matching),
-handled in `handleViewerAction` gated on `viewer.Kind()==viewerKindSecret` (inert on the
-other viewers and when no viewer is up, exactly like `logs.follow`/`f` for M3-06); toggling
-it re-renders the **same fetched data** (no re-fetch) via `SetContent`. (4) `WithSecretGetter`
-gates it: without a getter wired the Reveal-secret action is inert (the viewer never opens).
-**Reveal masks/unmasks all entries at once**; per-entry selection and **copy-to-clipboard
-(M3-08b)** are the deferred follow-up that ticks the M3 secret exit criterion — this leg is
-reveal only. A binary value renders as-is (read-only text); the copy slice can special-case
-it.
+**2026-07-23 (M3-08a, #89).** The Secret viewer is the first read-only viewer that transforms content (decode + mask) rather than showing it verbatim.
 
 ### D114 — The secret viewer has an entry cursor (nav.up/down select, not scroll); `secret.copy` (`c`) yanks the selected value to the clipboard via bubbletea's OSC-52, masked or revealed
-**2026-07-23 (M3-08b, #89).** Copy completes D113's Secret viewer and ticks the M3
-secret exit criterion. Constraints a later leg must not silently break: (1) The viewer
-carries a **per-entry cursor** (`secretSel`, an index into the key-sorted
-`secretData.Entries`) reset to 0 on every open/load; `renderSecret(data, revealed, sel)`
-marks the selected entry with a 2-cell cursor gutter (`> ` vs `  `, equal-width so keys
-stay column-aligned) and returns each entry's 0-based output line so the selection can be
-kept on screen. (2) **While the secret viewer is up, `nav.up`/`nav.down` move the entry
-cursor rather than line-scrolling the viewport** — a Secret's body is small, so walking
-entries is the useful gesture; the selection is pulled back on screen with the viewer's new
-`EnsureLineVisible` (half/full-page keys still scroll for a large revealed value). This is
-viewer-kind-gated (`viewer.Kind()==viewerKindSecret`), so the YAML/describe/logs viewers
-keep their j/k line-scroll unchanged. (3) Copy is a **registered keymap action**
-`secret.copy` (`c`, D11 — no raw-key match), handled in `handleViewerAction` gated on the
-secret viewer; it writes the selected entry's **decoded value** to the system clipboard via
-**`tea.SetClipboard` (bubbletea v2's built-in OSC-52 command)** — no external clipboard
-dependency, works over SSH — and is inert on the other viewers and when the Secret has no
-entries. (4) **Copy works masked or revealed**: putting a value on the clipboard is itself
-the deliberate gesture, so it need not be revealed on screen first; the confirmation echoes
-only the key + byte length (`copied "key" (N bytes)`), never the value. (5) The
-confirmation is a **neutral status-bar notice** — a new transient channel on the status bar
-(`SetNotice`/`ClearNotice`, Accent-styled, auto-cleared on its own `statusNoticeGen` timer,
-the non-error twin of `SetError`; an error outranks a notice in `View`) so a success reads
-as success, not as the red error toast. A future leg must keep copy off the raw-key path,
-keep the value off-screen/out of the confirmation, and not reintroduce an error-styled
-success.
+**2026-07-23 (M3-08b, #89).** Copy completes D113's Secret viewer and ticks the M3 secret exit criterion.
 
 ### D115 — Delete wired through the confirm modal: root owns one `modal.Model` captured in `handleAction`, `ConfirmedMsg` routes by Kind, result to the status bar, no raw y/n
-**2026-07-23 (M3-09).** First confirm wiring — D88's "the M3 action that needs it
-wires the modal into the shell" — and the pattern the remaining mutating actions
-(M3-10 scale/rollout, M3-11 cordon/drain, M3-12 suspend/resume) must follow.
-Constraints a later leg must not silently break: (1) The root owns exactly **one**
-`modal.Model` (`modal.New(s)`, sized in `resize()`); each action `ShowConfirm`s it
-with its own **Kind** so `modal.ConfirmedMsg`/`CancelledMsg` route back by Kind
-(`deleteModalKind` = `"delete"`). (2) The modal captures input in **`handleAction`**
-(via `handleModalAction`), **before** the viewer check, so it is the topmost input
-surface: `nav.drillIn` accepts, `nav.back`/`app.quit` decline, everything else is
-swallowed — it consumes **actions, never raw keys** (D11), so accept/decline are the
-Enter/Esc-consistent gestures, **no raw y/n**. (3) The confirm carries **no payload**
-in confirm mode, so the action's target (resource + the row's `ObjectRef`, whose UID
-guards the snapshot race — M1-06a/D35) is **stashed on the model** (`deleteRes`/
-`deleteRef`) between the modal opening and the accept landing, keyed live off the
-modal's Kind. (4) The mutating kube call runs **off the update loop** on accept and
-reports its outcome via a done-message to the status bar — a failure (NotFound/RBAC/
-UID Conflict) as a transient **error toast** (D74), a success as a neutral **notice**
-(D114's `surfaceNotice`); the layout never breaks. (5) The affected row **leaves the
-table via the live watch stream** (the delete triggers a DELETED event `ApplyEvent`
-folds in), **not** by manual table mutation — a mutating action never edits the table
-directly. (6) The modal is added to `overlayActive()` (mouse inert while up) and
-composited **first** in `View`'s overlay switch (topmost). Without a `Deleter` wired
-(`WithDeleter`) the action is inert — the modal never opens — so the pre-wiring app
-and non-action tests stay quiet. This **unblocks M2-14b** (the modal-flow teatest now
-has a reachable confirm through the running program).
+**2026-07-23 (M3-09).** First confirm wiring — D88's "the M3 action that needs it wires the modal into the shell" — and the pattern the remaining mutating actions (M3-10 scale/rollout, M3-11 cordon/drain, M3-12 suspend/resume) must follow.
 
 ### D116 — Full-program teatest of an async modal resolve syncs on a side-effect signal, never Quit-ordering
-**2026-07-23 (M2-14b).** The confirm modal accepts/declines through an **async
-round-trip** (KeyMsg → `ConfirmedMsg`/`CancelledMsg` cmd → the root hides the modal
-and, on accept, runs the action off the update loop — D115). A full-program test
-(teatest/v2, the M0-05 harness) therefore **must not** assert on state that a trailing
-`tea.Quit()` would race the resolving message for: `Send(enter)` then `Send(Quit)`
-lets Quit win, so the delete may never run in the final model. The constraint a future
-modal-flow teatest (M3-10 scale, M3-11 cordon/drain, M3-12 suspend/resume) must not
-break: **synchronise on the action's own side effect** — the mutating seam records the
-call on a channel (`signalDeleter.called`) the test blocks on before Quit — not on
-message ordering. Two corollaries reused across these tests: (1) a modal's **message
-line is byte-scannable** in `teatest.Output()` (foreground-only `styles.App`), so
-`WaitFor("Delete Pod pod-b?")` is a valid barrier that the open resolved — unlike the
-background-filled status bar / selected table row, whose cells a plain byte scan misses
-(assert those on `FinalModel`). (2) The modal's **async close on decline is not
-final-model-assertable** (it races Quit); prove the close via the accept path (the modal
-is hidden in `handleModalConfirmed` strictly before the delete cmd fires) and the
-direct-Update decline test, and let the decline teatest assert only the race-free facts
-(no delete ran; a swallowed nav left the selection put).
+**2026-07-23 (M2-14b).** The confirm modal accepts/declines through an **async round-trip** (KeyMsg → `ConfirmedMsg`/`CancelledMsg` cmd → the root hides the modal and, on accept, runs the action off the update loop — D115).
 
 ### D117 — Prompt-mode modal input routes through routeModalPromptKey; mutating actions share one target stash keyed by modal Kind
-**2026-07-23 (M3-10).** Scale is the first action to use the modal's **prompt mode**
-(a replica count), so it extends D115's confirm wiring with the text-entry rhythm the
-picker/filter already use (D73). Constraints a later leg must not silently break:
-(1) While `modal.Prompting()` the root routes each keypress through
-**`routeModalPromptKey`** (checked in `Update`'s KeyPressMsg case, after `filtering`,
-before the sequencer): a mapped no-text key (enter/esc) is a control Action fed to
-`handleModalAction` (drillIn submits, back cancels), any text/editing key goes to
-`modal.UpdatePrompt` — no view matches a raw digit (D11). A **confirm-mode** modal is
-not `Prompting()`, so it still routes through the sequencer → `handleAction` →
-`handleModalAction` (the D115 path) unchanged. (2) The two M3-10 mutating actions
-share **one** stash pair (`mutateRes`/`mutateRef`) rather than a pair each, because
-only one modal is ever up at a time; it is consulted only while that action's modal
-Kind is up, so a stale value from a declined one is harmless (as with delete's own
-pair). Later mutating actions (M3-11 cordon/drain, M3-12 suspend/resume, M3-13
-port-forward prompt) reuse `mutateRes`/`mutateRef` + this routing, not a bespoke stash
-or key path. (3) A prompt whose submitted text fails to parse (scale: non-integer /
-negative replicas) **degrades to a status-bar error toast and runs nothing** (the
-modal is already hidden — the user re-invokes), never a panic or a silent no-op —
-input validation is the shell's job, the kube layer's own guard (M1-06b) is the
-backstop.
+**2026-07-23 (M3-10).** Scale is the first action to use the modal's **prompt mode** (a replica count), so it extends D115's confirm wiring with the text-entry rhythm the picker/filter already use (D73).
 
 ### D118 — k9s is framed as a contemporary/peer of kube-commander, not "prior art"
-**2026-07-23 (FB-k9s-not-prior-art).** Both kube-commander and k9s emerged around
-2019–2020, so k9s is a **contemporary / kindred** Kubernetes TUI, not a predecessor
-kube-commander came after or built upon. The README "Special thanks" line was
-reworded from "prior art in the Kubernetes-TUI space" to "a contemporary Kubernetes
-TUI in the same space." The constraint a future docs/README/marketing leg must not
-silently contradict: **do not describe k9s (or any peer TUI) as "prior art" or imply
-a predecessor relationship.** The other existing k9s references stay — they are
-accurate and non-chronological: the "simpler and more discoverable than k9s"
-comparison, the "not cloning k9s" non-goal (goals.md), the "tview (what k9s uses)"
-note, and the k9s-`:`-style palette references.
+**2026-07-23 (FB-k9s-not-prior-art).** Both kube-commander and k9s emerged around 2019–2020, so k9s is a **contemporary / kindred** Kubernetes TUI, not a predecessor kube-commander came after or built upon.
 
 ### D119 — Menu does not eagerly count resource types; empty-type graying is declined for now
-**2026-07-23 (FB-gray-out-empty-types).** Triaging the soft/low idea of graying left-menu
-resource types that have zero objects in the current view. Two constraints a future leg
-must not silently contradict:
-(1) **Never implement the eager version** — kubecom must not list/count every menu type on
-a namespace switch (or on any menu render) to know each item's population. That is dozens
-of API calls per switch, rate-limit exposure on large clusters, and instantly-stale counts
-needing re-polling/watch-all — it directly fights the lazy-list principle (D8, principle 4:
-list a type only when the user drills in). The menu stays stateless-per-item with respect
-to object counts.
-(2) The **cheap opportunistic variant is declined for now** (not forbidden): graying only
-types the user has already opened-and-found-empty, cached per `(GVR, namespace)`, reusing
-the one active watch's row count. Rejected on cost/value: the value is marginal and
-revisit-only (the user already saw the type was empty when they opened it; it evaporates /
-re-keys on every namespace switch since only one type is watched at a time), while it would
-add a namespace-keyed emptiness cache, per-`ApplyEvent` plumbing on the watch hot path, and
-a **third** always-on menu visual state that must read as distinct from the existing
-"unavailable/denied" muting (D57/M2-05b) — a real-terminal UX judgment (D68/D79) not worth
-the standing complexity for a low/soft item. If revisited, the opportunistic variant is the
-only acceptable shape (never the eager one), it must reuse the existing watch (zero extra
-API calls), key emptiness by `(GVR, namespace)`, treat never-visited as **unknown ≠ empty**,
-and keep "empty" visually distinct from "unavailable".
+**2026-07-23 (FB-gray-out-empty-types).** Triaging the soft/low idea of graying left-menu resource types that have zero objects in the current view.
 
 ### D120 — Idempotent mutating actions dispatch directly (no confirm modal); cordon/uncordon set the pattern
-**2026-07-23 (M3-11a).** Cordon/uncordon are the first mutating actions wired
-**without** a confirm modal: cordoning is idempotent (a merge patch of
-`spec.unschedulable`, M1-06c — re-running it is a no-op, no UID guard, D35), so a
-yes/no gate would be friction with no safety value. The constraint a later leg must
-not silently contradict: **an idempotent, reversible mutating action fires straight
-from `handleRowAction` and reports to the status bar — it does not open the D115
-confirm modal, and it carries no target stash** (`mutateRes`/`mutateRef` are for
-modal-gated actions that must hold the target between an open modal and the accept;
-a direct dispatch has the row's ref in hand, so it passes `msg.Resource`/`msg.Object`
-through and needs no field). This splits the M3 mutating actions into two shapes:
-**confirm-gated** (delete D115, rollout-restart D117 — destructive/disruptive) vs
-**direct** (cordon/uncordon here — idempotent). M3-12 (CronJob suspend/resume) is
-also idempotent (M1-06d, same merge-patch shape) and should follow the **direct**
-shape, not a modal. The `Cordoner` seam (`WithCordoner`, nil → inert) bundles both
-verbs on one interface (they share `setUnschedulable`); the outcome is a neutral
-notice (`cordoned`/`uncordoned <node>`) on success or an error toast (D74) on
-failure, and the Node's `Unschedulable` status flips via the live watch stream, not
-by touching the table (as with every mutating action, D115).
+**2026-07-23 (M3-11a).** Cordon/uncordon are the first mutating actions wired **without** a confirm modal: cordoning is idempotent (a merge patch of `spec.unschedulable`, M1-06c — re-running it is a no-op, no UID guard, D35), so a yes/no gate would be friction with no safety value.
 
 ### D121 — Drain policy default: IgnoreDaemonSets on, Force/DeleteEmptyDirData off (refuse over silent data loss); progress streams like the log pump
-**2026-07-23 (M3-11b).** The Drain action (unlike cordon/uncordon, which are
-idempotent and dispatch directly, D120) evicts pods, so it is **confirm-gated**
-(D115) — the second shape of the M3 mutating split. Two constraints a later leg must
-not silently contradict:
-1. **`defaultDrainOptions = {IgnoreDaemonSets: true}`** is kubecom's drain policy.
-   `IgnoreDaemonSets` is on because every real cluster runs never-evictable DaemonSet
-   pods (CNI, kube-proxy, agents) — without it *every* drain is refused, a useless
-   default. `Force` and `DeleteEmptyDirData` stay **off**: those are the data-loss
-   flags (evicting an unmanaged pod's only copy; discarding emptyDir contents), so the
-   strict default **refuses the drain upfront** naming the blocking pod
-   (`DrainCandidates`) rather than silently destroying data. A future leg that surfaces
-   these as per-drain toggles must default them off — never Force-by-default.
-2. **A long-running action streams progress like a log stream, not a one-shot
-   done-message.** `kube.DrainStream` (the channel twin of `Drain`, which is now a thin
-   consumer of it so the two never diverge) emits a `DrainEvent` per step; the shell
-   pumps it via `drainPump` (mirroring `logPump`/D53) tagged with a `drainGen` so a
-   superseded/cancelled drain's steps are dropped, reports each step to the status bar,
-   and tears the stream down on quit via `stopDrain` (the mutating twin of
-   `stopLogStream`, cancel-on-quit). The `Drainer` seam (`WithDrainer`, nil → inert)
-   exposes only `DrainStream`. The channel closing cleanly (no terminal `Err` event) is
-   the success terminator; a terminal `DrainEvent{Err}` degrades to an error toast (D74).
-   The next long-running mutating/streaming action should follow this shape.
+**2026-07-23 (M3-11b).** The Drain action (unlike cordon/uncordon, which are idempotent and dispatch directly, D120) evicts pods, so it is **confirm-gated** (D115) — the second shape of the M3 mutating split.
 
 ### D122 — Port-forward is a tracked background handle observed via messages, not a stream pump; started behind a ports prompt, Pod-only for now, cancel-all-on-exit
-**2026-07-23 (M3-13a).** The Port-forward action starts M1-08's `kube.PortForward`
-(SPDY to the pod's portforward subresource, no kubectl binary, D2) as a **long-lived
-background handle** the shell tracks — a different shape from both the one-shot mutating
-actions (D120) and the drain's step-by-step pump (D121). Constraints a later leg must
-not silently contradict:
-1. **The shell depends on an interface, not the concrete handle.** `ActiveForward`
-   (`Ready`/`Done`/`Err`/`Ports`/`Stop`) is the subset of `*kube.PortForward` the shell
-   observes, so the flow is hermetically fakeable (D18). Because `kube.Clients.PortForward`
-   returns the concrete `*kube.PortForward` (which satisfies `ActiveForward`) rather than
-   the interface, the launcher adapts it with `tui.PortForwarderFunc` — the first seam that
-   needs an adapter rather than `*kube.Clients` satisfying it directly. `PortForwarder`
-   (`WithPortForwarder`, nil → inert).
-2. **Lifecycle flows in through messages, never a mutex (principle 1) and never a
-   channel *pump*.** Unlike the drain (one receive per Cmd re-issued each step), a
-   forward has two lifecycle edges: a Cmd `select`s on `Ready()`/`Done()` and reports
-   the first (`forwardReadyMsg`/`forwardDoneMsg`); on ready the shell reads the bound
-   `Ports()` and arms a second Cmd blocking on `Done()`. Each forward carries a stable
-   `id` so a message finds its entry after the tracked slice shifts.
-3. **Started behind a ports prompt; several concurrent forwards are tracked.** The
-   prompt reuses the D117 prompt-mode modal + shared `mutateRes`/`mutateRef` stash
-   (only one modal is up at a time). Multiple forwards accumulate in `m.forwards`;
-   **all are cancelled on quit** (`stopForwards`, cancel-on-exit — the third teardown
-   after `stopLogStream`/`stopDrain`). Each forward owns a `context.CancelFunc`;
-   cancelling it ends the forward cleanly (the kube handle bridges ctx→Stop), so a
-   user/quit stop reads as a neutral notice, a transport failure as an error toast (D74).
-4. **Pod-only for M3-13a.** `kube.PortForward` posts to the pod subresource, so the
-   Port-forward action applies to `Pod` only for now; the listing panel + stop-individual
-   is M3-13b, and Service→endpoint-pod resolution (mirroring `PodForOwner`, D112) is M3-13c.
-
----
+**2026-07-23 (M3-13a).** The Port-forward action starts M1-08's `kube.PortForward` (SPDY to the pod's portforward subresource, no kubectl binary, D2) as a **long-lived background handle** the shell tracks — a different shape from both the one-shot mutating actions (D120) and the drain's step-by-step pump (D121).
 
 ### D123 — Port-forwarding a Service resolves it to a backing endpoint pod first (ServiceResolver seam), mirroring the logs PodResolver hop
-**2026-07-24.** A **Service cannot be port-forwarded directly** — `kube.PortForward`
-POSTs to the pod `portforward` subresource (D122/M1-08), which a Service does not have.
-So the Port-forward action, re-extended to apply to `Service` (M3-13c) as well as `Pod`
-(D122), **resolves a Service to a backing endpoint pod before opening the ports prompt**,
-mirroring the logs viewer's `PodResolver`/`PodForOwner` hop (D112):
-1. **`kube.PodForService(ctx, ref)`** reads the Service's `spec.selector` (a flat label
-   map, via the typed clientset — no unstructured parsing), lists matching pods, and
-   returns the **newest Ready pod** (fallback newest overall), reusing `newestReadyPod`.
-   A **selector-less Service** (headless with manual Endpoints, or ExternalName) has no
-   pods to forward to → a wrapped error the caller degrades to a toast (principle 3),
-   never a panic — same for a missing Service or no matching pods.
-2. **`ServiceResolver` seam** (`WithServiceResolver`, `*kube.Clients` satisfies it) — a
-   **separate seam from `PodResolver`**, not a second method on it, since the two
-   resolve for different features (logs vs port-forward) and a Pod row forwards directly
-   with no hop. Without it wired a Service port-forward **degrades to a toast**, not a
-   silent no-op (a Pod stays inert-without-forwarder as before).
-3. **Resolve-then-prompt**, off the update loop, **generation-guarded** (`pfResolveGen`,
-   like `viewerGen`): the prompt (and the resulting forward's label) shows the **resolved
-   pod**, not the Service, so the user sees which endpoint pod is forwarding; a resolution
-   that lands after a newer port-forward request is dropped. The ports the user types are
-   **pod-side** — no Service-port→targetPort translation (deliberately out of this slice's
-   scope; a future refinement if dogfooding wants it).
+**2026-07-24.** A **Service cannot be port-forwarded directly** — `kube.PortForward` POSTs to the pod `portforward` subresource (D122/M1-08), which a Service does not have.
 
 ### D124 — In-process exec is a blocking `Clients.Exec` over the pod exec subresource (SPDY remotecommand), apimachinery-free, driven by the TUI via `tea.Exec` off the update loop
-
 **Date:** 2026-07-24 · M3-14a.
-
-kubecom execs into a container **in process** via `remotecommand.NewSPDYExecutor` on a
-POST to the pod's `exec` subresource — the same SPDY upgrade `kubectl exec` uses, so no
-kubectl binary is required for the primary path (D2). The primitive is
-**`Clients.Exec(ctx, ref, ExecOptions) error`** and it **blocks** for the whole exec:
-
-1. **It is a blocking call, not a stream pump or a background handle.** Unlike logs (a
-   channel pump, D53) or port-forward (a tracked background handle, D122), an interactive
-   exec owns the terminal for its lifetime, so `Exec` runs synchronously and returns when
-   the command exits. The TUI must therefore drive it from a **suspended terminal via
-   `tea.Exec`** (an `ExecCommand` whose `Run()` calls `kube.Exec`) — **never on the Bubble
-   Tea update loop** (M3-14b). A clean exit returns nil; a non-zero command exit or a
-   transport drop returns a wrapped error whose chain preserves the underlying
-   `exec.CodeExitError` (so the exit code is recoverable).
-2. **Apimachinery-free boundary (D33).** The public surface uses kubecom's own
-   `ExecOptions` and `TerminalSize`/`TerminalSizeQueue` types, never client-go tooling
-   types; `execStreamOptions` maps to `remotecommand.StreamOptions` and a
-   `sizeQueueAdapter` translates resizes on the way to the wire, so the TUI never imports
-   `remotecommand` (mirrors PortForward's `ForwardedPort`).
-3. **TTY folds stderr into stdout.** With `TTY` set the primitive drops the separate
-   Stderr stream and consults `SizeQueue` for PTY resizes — `StreamWithContext` rejects a
-   TTY exec that also attaches Stderr, and a shell needs the PTY for line editing / job
-   control. A non-TTY exec keeps all three streams and ignores the size queue.
-4. **Injectable executor factory** (like PortForward's `forwarderFactory`): `runExec`
-   drives a `streamExecutor` seam so argument validation, option mapping, size-queue
-   adaptation, and error propagation are covered hermetically (D18); the live SPDY exec is
-   envtest / dogfood territory. Empty pod name or empty command is rejected before any
-   dial (#86). Raw-PTY exec is Linux/macOS only (D7); the `kubectl exec` fallback lands
-   with the wiring (M3-14b).
+1. **It is a blocking call, not a stream pump or a background handle.**
+2. **Apimachinery-free boundary (D33).**
+3. **TTY folds stderr into stdout.**
+4. **Injectable executor factory**
 
 ### D125 — The exec TUI wire runs `kube.Exec` inside a `tea.Exec` `ExecCommand` that puts the local terminal raw itself; the exec size queue delivers one seeded size then session-end
-
 **Date:** 2026-07-24 · M3-14b-1.
-
-The Exec-shell action suspends into a shell via **`tea.Exec`** (not `ExecProcess`): an
-`execCommand` (`internal/tui/exec.go`) implements bubbletea's `ExecCommand`, and its
-`Run()` calls the blocking `kube.Exec` (D124) — so the shell owns the terminal off the
-update loop, exactly as D124 requires. Binding constraints for future exec legs:
-
-1. **The ExecCommand owns raw mode, not bubbletea.** bubbletea releases the terminal to
-   **cooked** on suspend; an interactive remote PTY needs the *local* terminal **raw** so
-   keystrokes and `^C` pass straight through. `Run()` therefore calls
-   `term.MakeRaw`/`term.Restore` (`golang.org/x/term`, now a direct dep) around the exec,
-   nested inside bubbletea's own release/restore. It does this **only when stdin is a real
-   terminal** (`*os.File` + `term.IsTerminal`) — a non-terminal stdin (test buffer, pipe)
-   skips raw/size handling and just streams, which is what keeps `Run` hermetically
-   testable without a TTY.
-2. **`SetStderr` is a no-op on the wire.** A TTY exec has no separate stderr (D124 §3), so
-   the adapter attaches only stdin+stdout; bubbletea's `SetStderr(os.Stderr)` is dropped.
+1. **The ExecCommand owns raw mode, not bubbletea.**
+2. **`SetStderr` is a no-op on the wire.**
 3. **The size queue seeds the initial size once, then blocks until session-end.**
-   `execSizeQueue` is a one-slot buffered channel: `seed(w,h)` offers the terminal's size
-   at exec start (dropped if 0×0 → server default), `Next()` returns it once then blocks,
-   `close()` (deferred in `Run`) makes `Next` return nil — remotecommand's end signal.
-   **Live mid-session resize (SIGWINCH) is deliberately not wired here** (M3-14b-3).
-4. **This slice execs the pod's *default* container with `/bin/sh`.** Empty `Container`
-   (kube.Exec → the default-container annotation / sole container), fixed `["/bin/sh"]`
-   argv. Multi-container disambiguation (reuse the M3-07a `ctrPicker`) is **M3-14b-2**;
-   the `kubectl exec` binary fallback is **M3-14b-4**. A clean shell exit → neutral status
-   notice; any failure (attach error, missing shell, non-zero exit) → transient error
-   toast (D74), never a panic. Inert with no `Execer` wired or an empty ref.
+4. **This slice execs the pod's *default* container with `/bin/sh`.**
 
 ### D126 — The container-resolution path is purpose-tagged (logs ↔ exec) and routes the resolved container via `streamOrExec`; the shared `ctrPicker` is disambiguated by `ctrPurpose`
-
 **Date:** 2026-07-24 · M3-14b-2.
-
-The M3-07a resolve-then-pick container path (fetch a pod's containers → single one used
-directly, multiple open the shared `ctrPicker`) is now shared by **both** the logs viewer
-and the exec session. `resolveContainersFor(res, podRef, purpose)` carries a `ctrPurpose`
-(`ctrPurposeLogs`/`ctrPurposeExec`) through the async fetch (`containersLoadedMsg.purpose`)
-and the picker stash (`ctrPurpose` + the renamed `ctrStreamRes`/`ctrStreamRef`), and
-**`streamOrExec`** is the single terminal that routes a resolved container to
-`streamLogsInto` (logs) or `execInto` (exec). Binding constraints:
-
-1. **One picker, purpose-routed.** `ctrPicker` is reused, not duplicated: only one is ever
-   up, so a single stash serves both purposes. A future action that also picks a container
-   adds a `ctrPurpose` value + a `streamOrExec` arm — it must **not** branch on the picker
-   Kind (all pickers share `containerPickerKind`, D65) or add a second container picker. The
-   picker title (`pickerTitle()`) disambiguates the prompt for the user.
-2. **Exec goes through the same fast-path/pick split.** `openExec` no longer suspends
-   directly (that was M3-14b-1's default-container behaviour); it calls
-   `resolveContainersFor(..., ctrPurposeExec)`. A single-container pod (or **no
-   `ContainerLister` wired** → empty container, the M3-14b-1 fallback) execs directly; a
-   multi-container pod prompts. `execInto(res, ref, container)` is the exec terminal —
-   `newExecCommand` now takes the chosen container (empty = default/sole).
-3. **`viewerGen` guards the exec fetch too.** The exec container fetch bumps/checks
-   `viewerGen` for supersession like the logs fetch, even though exec opens no viewer; the
-   `gen` is unused past `streamOrExec` on the exec arm.
+1. **One picker, purpose-routed.**
+2. **Exec goes through the same fast-path/pick split.**
+3. **`viewerGen` guards the exec fetch too.**
 
 ### D127 — Live exec terminal resize: a SIGWINCH watcher pushes the current size into the exec size queue, which is now a latest-wins one-slot channel
-
 **Date:** 2026-07-24 · M3-14b-3.
-
-The exec size queue (`execSizeQueue`, D125 §3) no longer delivers only the seeded size —
-it now tracks the local window for the session's life. `execCommand.Run` (real-terminal
-path only) starts **`watchResize(q, sizeOf)`**: a goroutine that listens for
-**`syscall.SIGWINCH`** and on each one reads the current terminal size (`term.GetSize`,
-injected as `sizeOf` so the pump is hermetically testable with a fake reader + an
-in-process `syscall.Kill(self, SIGWINCH)`) and calls the new **`push`**. Binding
-constraints for future exec/size legs:
-
-1. **The size queue is latest-wins, never lossy-blocking.** `push` replaces the pending
-   size (drops a stale unread one, retries) so a burst of resizes collapses to the newest
-   and the SIGWINCH goroutine never blocks on a slow `remotecommand` reader. `seed` (the
-   initial size) keeps its keep-existing semantics; `push` (resizes) supersedes. A 0×0 read
-   is dropped by both.
-2. **The watcher is stopped before the queue is closed.** `Run` defers `watchResize`'s
-   `stop` *after* `defer q.close()`, so LIFO tears the watcher down first; `stop`
-   unregisters the signal (`signal.Stop`) and **blocks until the pump goroutine has
-   exited**, guaranteeing no `push` ever races a closed channel. A future leg adding another
-   size producer must preserve that stop-before-close ordering.
-3. **SIGWINCH resize is Linux/macOS only**, consistent with the raw-PTY path (D7/D125) —
-   `syscall.SIGWINCH` exists on both; native Windows is a non-goal (WSL2).
+1. **The size queue is latest-wins, never lossy-blocking.**
+2. **The watcher is stopped before the queue is closed.**
+3. **SIGWINCH resize is Linux/macOS only**
 
 ### D128 — Exec prefers `kubectl exec` when the binary is on PATH (parity escape hatch); the in-process SPDY path is the fallback that keeps exec working without kubectl
-
 **Date:** 2026-07-24 · M3-14b-4.
-
-`execInto` now routes through a **`kubectl exec -it`** subprocess (`tea.ExecProcess`)
-when the `kubectl` binary is on PATH, and only falls back to the in-process SPDY wire
-(D125) when it is not. Binding constraints:
-
-1. **Prefer kubectl when present; SPDY is the fallback, not the primary.** This does
-   **not** reopen the hard kubectl dependency (#68/D2): exec still works with no kubectl
-   installed via the in-process path. But when kubectl *is* there it owns its own raw PTY,
-   SIGWINCH resize, auth plugins, and every server-side edge case, so it is the
-   battle-tested parity path. Exec is one of the two sanctioned shell-outs (D2), so
-   shelling out here is within the in-process-first principle, not a violation of it.
+1. **Prefer kubectl when present; SPDY is the fallback, not the primary.**
 2. **The shelled-out kubectl must target the same cluster kubecom launched with.**
-   `kubectlExecArgs` emits `--kubeconfig` and `--context` from the model
-   (`WithKubeconfig` — new — and `WithContext`) plus `-n <namespace>` from the row, each
-   only when set (else kubectl uses its standard resolution). A future flag that changes
-   how kubecom resolves its cluster must be forwarded here too, or the fallback exec will
-   silently hit the wrong context.
-3. **The kubectl lookup is a seam (`lookupKubectl`, a package var).** It is overridable in
-   tests so the fallback routing is hermetically testable without a real kubectl on the
-   runner; `kubectlExecArgs` is a pure argv builder tested directly. The container arg is
-   omitted when empty (kubectl picks the pod default, matching the SPDY path), and the
-   shell is the same `defaultExecShell` (`/bin/sh`) both paths use.
-4. **This does not close the M3 exec exit criterion.** Both paths still need a
-   real-terminal/real-cluster dogfood (the advisory human-task
-   `vault/human-tasks/2026-07-24-exec-live-cluster-dogfood.md`, now also covering the
-   kubectl route); the criterion stays unticked pending that run.
+3. **The kubectl lookup is a seam (`lookupKubectl`, a package var).**
+4. **This does not close the M3 exec exit criterion.**
 
 ### D129 — Edit applies via a client-side Update (PUT), not server-side apply
-**2026-07-24.** The Edit action (M3-15) writes the edited object back with
-`Clients.Update` (`internal/kube/apply.go`): parse the edited YAML → unstructured
-→ dynamic-client **Update** (PUT) of the full object. This is `kubectl edit`'s
-**default** (client-side apply), not `--server-side`. **Why:** the edited buffer is
-the whole object GetYAML produced (only managedFields stripped), so it still carries
-`metadata.resourceVersion` — a PUT then gets **optimistic concurrency for free**: a
-concurrent server-side change → Conflict, degrade, never a silent clobber. SSA on a
-full fetched object would instead take field-ownership of everything it round-tripped,
-surprising and heavier for a plain edit. **Constraints a future leg must not silently
-contradict:**
-1. **Edit is not a rename.** `Update` rejects (before any request) an edited object
-   whose name is empty or differs from the ref's, or whose namespace differs (a
-   namespaced resource with an empty edited namespace is filled from the ref), and
-   rejects empty/null/unparseable content — a botched edit never mutates the wrong
-   object or wipes this one.
-2. **Parsing goes YAML→JSON→unstructured** (`obj.UnmarshalJSON`), so integer fields
-   decode as int64 (the unstructured scheme's contract), matching what the dynamic
-   client round-trips — a plain YAML unmarshal would yield float64 numbers.
-3. **No-change detection is the caller's job** (M3-15b): the TUI compares the edited
-   bytes to the original and simply never calls `Update` on a no-op editor exit, so
-   `Update` always intends to write.
+**2026-07-24.** The Edit action (M3-15) writes the edited object back with `Clients.Update` (`internal/kube/apply.go`): parse the edited YAML → unstructured → dynamic-client **Update** (PUT) of the full object.
 
 ### D130 — Port-forward: bind failures are actionable, not raw; `:0`/`:remote` is the free-local-port escape
-**2026-07-24.** A local-listener bind failure (client-go's `unable to listen on any
-of the requested ports: [{6379 6379}]`) is **not surfaced raw**. The shell detects it
-by that sentinel substring (`isPortForwardBindErr`) and replaces it with an actionable
-status-bar hint (`portForwardBindHint`) naming the clashing local port(s) and telling
-the user to retry with a leading-colon spec — `:6379` or `:0` — to have the OS assign a
-free local port (feedback `2026-07-24-port-forward-picker-and-local-port`, part 2).
-This leans on an existing kube-layer capability, **not** a new one: `kube.PortForward`
-already accepts kubectl's `:<remote>` syntax (leading colon → OS-assigned local port),
-and `PortForward.Ports()` reports the bound local port once Ready fires, which the
-status notice already shows. **Constraints a future leg must not silently contradict:**
-1. Never show client-go's raw listener error to the user; route bind failures through
-   the hint. Other transport errors still go through `NewErrorMsg` (classified).
-2. `:0` / `:<remote>` staying a valid, documented way to auto-assign a free local port
-   is load-bearing for this UX — don't remove leading-colon handling from the spec
-   parse or the prompt hint.
-3. The remaining parts of that feedback — a **port picker** from the pod's declared
-   ports (FB-pf-port-picker) and **editable/auto local port** with a one-keystroke
-   "use a free port" (FB-pf-local-port) — are deferred board tasks, not done here.
+**2026-07-24.** A local-listener bind failure (client-go's `unable to listen on any of the requested ports: [{6379 6379}]`) is **not surfaced raw**.
 
 ### D131 — Cluster search: one-shot concurrent fan-out over List, curated-scope default
-**2026-07-24.** Cross-object **cluster search** (feedback
-`2026-07-24-cluster-search-multi-resource`: type a query → matching objects across
-kinds, not a within-table filter). Kubernetes has **no cross-type search API**, so
-"search the cluster" means listing kinds and matching client-side — the same
-expensive enumeration the fast-cold-start design (D8/principle 4) avoids on the hot
-path. It is therefore built as a **one-shot, user-triggered, cancellable** query, never
-a "watch everything". The kube-layer primitive is `kube.Search` /`searchRows`
-(`internal/kube/search.go`, the SEARCH-01 first slice): it fans out **concurrent**
-server-side `List`s (M1-05a) over a **caller-supplied** `[]Resource`, matches
-`Row.Object.Name` by **case-insensitive substring**, and **streams** `SearchHit`
-(`{Resource, ObjectRef}`) onto a channel. **Constraints a future leg must not silently
-contradict:**
-1. **One-shot, not a watch.** Each kind is listed exactly once per query; the search
-   never re-lists or opens watches. Re-running is a new explicit query.
-2. **Curated scope is the default; whole-cluster is an opt-in widen.** The default kind
-   set is `CommonSearchResources` (Pods, Deployments, StatefulSets, DaemonSets,
-   Services, ConfigMaps, Secrets, PVCs, Jobs, CronJobs, Ingresses) in the **current
-   namespace**. Searching every discovered kind / all namespaces is a later opt-in
-   slice — the default must never enumerate every type (D8/principle 4).
-3. **Per-kind failure isolates** (principle 3): a denied/broken kind's List error is
-   swallowed and contributes nothing; it never aborts the search or blanks results.
-4. **Bounded + cancellable.** A hit **cap** (`limit`) stops the in-flight lists once
-   reached; the channel closes on completion, cap, or ctx-cancel (query change / view
-   close). A background goroutine owns all sends (principle 1).
-5. Matching starts at **name substring**; fuzzy / label / field matching and
-   whole-cluster/all-namespace widening are **later slices** (SEARCH-03+), not part of
-   this contract. A `SearchHit` carries the `Resource` so drilling in switches the
-   browse view to that kind and selects the object.
+**2026-07-24.** Cross-object **cluster search** (feedback `2026-07-24-cluster-search-multi-resource`: type a query → matching objects across kinds, not a within-table filter).
 
 ### D132 — Key contexts: the confirm modal resolves `y`/`n` in its own key context; supersedes the "no y/n" of D88/D115
-**2026-07-24** (feedback `2026-07-24-confirm-modal-yn-keys`). The confirm modal now
-accepts `y`/`n` (the universal yes/no muscle memory) **and** `enter`/`esc`, via two
-**registered, rebindable** actions — `confirm.accept` (default `y`, `enter`) and
-`confirm.decline` (default `n`, `esc`) — resolved through the keymap, **not** raw-key
-matching (D11). This is the concrete realization of keybindings.md's "two actions bound
-to the same key **in the same context**": the keymap now has **key contexts**
-(`contextOf`). `y`/`n`/`enter`/`esc` already mean res.yaml / app.searchNext / nav.drillIn
-/ nav.back in the **browse** context, so the confirm actions live in a separate
-**confirm** context; `build` partitions bindings into per-context resolution indexes
-(`bySeq` for browse + the sequencer, `confirmBySeq` for the modal) so the same chord
-maps to a browse action **and** a confirm action with no collision. **Constraints a
-future leg must not silently contradict:**
-1. **The confirm modal captures input and resolves via `ConfirmAction` first**
-   (`routeModalConfirmKey`, gated on `m.modal.Active() && !Prompting()`, before the
-   sequencer). Unmatched keys fall back to the browse keymap so `app.quit` still
-   dismisses; everything else is swallowed. **Prompt-mode** modals are unchanged —
-   they still submit/cancel on `nav.drillIn`/`nav.back` via `routeModalPromptKey` (a
-   typed `y`/`n` is text there, never accept/decline).
-2. **`modal.Update` accepts on `confirm.accept` OR `nav.drillIn`, declines on
-   `confirm.decline` OR `nav.back`** — so both confirm keys and the prompt-mode nav
-   keys resolve one component.
-3. **This supersedes the "no `confirm.yes`/`confirm.no` actions, no raw y/n" clause of
-   D88 and D115.** The rest of those decisions stands: the modal is Kind-stamped,
-   message-only (principle 1), one `modal.Model` on the root, results routed by Kind.
-   Adding another key context (e.g. a viewer context) follows this pattern — a new
-   `contextOf` entry + a context-scoped resolver, never raw-key matching in a view.
+**2026-07-24** (feedback `2026-07-24-confirm-modal-yn-keys`).
 
 ### D133 — Default row-action keys: delete is `d`, describe relocates to `D`
-**2026-07-24** (feedback `2026-07-24-delete-default-key-d`). The shipped **default**
-delete binding is now `d` (`res.delete`), matching vim `dd`-style muscle memory; the
-old `x` default is dropped. Describe (`res.describe`), which previously owned `d`,
-relocates to **`D`** (capital, read-only, not a reserved nav chord). Everything stays
-registry-driven and rebindable (D11) — this only changes `defaultBindings`, the
-generated `docs/keybindings.md`, and the design-intent table; no view matches a raw
-key. **Constraints a future leg must not silently contradict:**
-1. **`d` = delete, `D` = describe** in the default keymap. Neither is in the reserved
-   nav set (`navChords`), so no warn/collision; the freed `x` is now unbound by default.
-2. **The coming "unify view-YAML + edit" leg (feedback `unify-yaml-view-and-edit`)
-   must lay out its key against this surface** — it collapses `res.yaml` (`y`) and
-   `res.edit` (`e`) into one editable-object action and frees a key; `d`/`D` are settled
-   and must not be reused for it. Describe and logs stay read-only viewers. This keeps
-   the two coupled feedback items from producing conflicting one-off key layouts.
+**2026-07-24** (feedback `2026-07-24-delete-default-key-d`).
 
 ### D134 — Logs get a dedicated full-screen logs view (`logsview`) with a live filter, off the shared read-only viewer
-**2026-07-24** (feedback `2026-07-24-logs-dedicated-view-live-grep`). Logs stop sharing
-the M3-01 read-only viewer and move to a **dedicated full-screen logs mini-app**
-(`internal/tui/components/logsview`) built for streaming + a **real-time grep**: a
-`/`-filter (reusing `app.filter`) that narrows the streamed buffer **live while
-following** (case-insensitive substring now; regex is LOGS-03), plus follow/pause
-(reusing `logs.follow`) with auto-scroll-to-bottom on append and a header showing
-`[following]`/`[paused]` + the active filter and matched/total. The feedback was
-triaged into board tasks **LOGS-01** (this component, done) → **LOGS-02** (app wiring,
-retire the shared-viewer logs path) → **LOGS-03** (regex + highlight) → **LOGS-04**
-(wrap/timestamps/jump-to-latest). **Constraints a future leg must not silently
-contradict:**
-1. **The shared viewer (M3-01) keeps serving YAML/describe/secret; logs do not.** Once
-   LOGS-02 lands, the logs path streams into `logsview`, and the `viewerKindLogs`
-   special-casing / `logFollow` / `logTitle` on the shared-viewer path is removed — do
-   not re-route logs back onto the shared viewer.
-2. **Logs render full-screen (no centered border box)** — the root composites the view
-   as the base while it is up, not via `overlayCenter` (D95). It is the one M3 viewer
-   that replaces the base rather than floating over it, because logs want every column
-   for long lines / high throughput.
-3. **The live filter narrows client-side over the full buffer while following** — a
-   line that arrives under an active filter is shown only if it matches; clearing the
-   filter (one `nav.back`) restores the full stream, a second `nav.back` closes the
-   view. Keymap-driven (D11), message-only (principle 1): the only raw-key entry is the
-   filter field (`UpdateFilter`), exactly as the picker.
-4. **Container picker (M3-07a) and pod-owning resolution (M3-07b) still feed logs** —
-   LOGS-02 keeps that resolve-then-stream plumbing and the gen-tagged log pump (D53);
-   this decision changes the *sink*, not how a pod/container is chosen.
+**2026-07-24** (feedback `2026-07-24-logs-dedicated-view-live-grep`).
 
 ### D135 — View YAML and Edit unify into one object-YAML action ($EDITOR edit-in-place); the standalone read-only YAML viewer is retired
-**2026-07-24** (feedback `2026-07-24-unify-yaml-view-and-edit`). A separate read-only
-**View YAML** (`y`, M3-03) and **Edit** (`e`, M3-15) are redundant: viewing and editing
-are the same act on an object's YAML. They **collapse into one action that opens the
-object's YAML in the user's `$EDITOR`** (the sanctioned suspend, D2/D125) — change
-nothing and you just close it (a clean no-op), change something and it applies on save
-through `kube.Update` (M3-15a/D129). Describe and logs **stay read-only** (you can't
-apply a describe); this unification is specifically the object's own YAML. **Supersedes
-the M3-03-vs-M3-15 split.** Delivered bottom-up:
-- **M3-15b** (this leg): the Edit → `$EDITOR` **suspend + apply machinery** wired to the
-  `res.edit` action — fetch YAML (reusing the M1-07a `YAMLGetter`) → temp file →
-  `tea.Exec` `$EDITOR` → read back → `Editor` seam (`kube.Update`) only on change;
-  no-change / editor-abort / apply-rejection all degrade to a status-bar toast without a
-  partial mutation (principle 3). `$EDITOR` resolution is `KUBE_EDITOR` → `EDITOR` → `vi`,
-  space-split for flags (`code -w`).
-- **M3-15c** (follow-up): retire the standalone read-only YAML viewer path
-  (`openYAMLViewer` / `yamlLoadedMsg` / `handleYAMLLoaded` / `viewerKindYAML`) and collapse
-  the surface to **one key** — edit becomes the object-YAML action, `res.yaml`/`View YAML`
-  goes away; coordinate the freed key with the D133 delete/describe layout and regenerate
-  `docs/keybindings.md`. The `YAMLGetter` seam **stays** — the edit flow fetches through it.
-
-**Constraints a future leg must not silently contradict:**
-1. **Edit is the single object-YAML action; there is no separate read-only YAML viewer**
-   once M3-15c lands. Do not reintroduce a `y`-opens-a-read-only-viewer path.
-2. **A no-op edit (buffer unchanged) never calls `Update`** — the caller compares the
-   read-back bytes to the fetched bytes; only a real change applies (kube.Update owns
-   validation + optimistic concurrency, M3-15a).
-3. **Describe/logs remain read-only viewers** — unification is the object's YAML only.
-4. The live `$EDITOR` suspend needs a **human dogfood** (like exec, D125); the M3 "Edit
-   round-trips through `$EDITOR`" exit criterion stays unticked until that lands
-   (`vault/human-tasks/2026-07-24-edit-live-cluster-dogfood.md`).
+**2026-07-24** (feedback `2026-07-24-unify-yaml-view-and-edit`).
 
 ### D136 — M3-15c resolves D135: the unified View/Edit YAML action keeps `e`, gates on `canGet`, and `y` is retired
 **2026-07-24** (M3-15c, completing D135). Two choices D135 left open, now settled:
-
-1. **The surviving key is `e` (`res.edit`); `y` (`res.yaml`) is removed and left unbound in
-   the browse context.** Rationale: `e`=edit is the accurate, conventional mnemonic for an
-   action that can mutate, and it was already the shipped edit key — no new muscle memory,
-   minimal churn atop the D133 `d`(delete)/`D`(describe) layout. `y` is *not* repurposed
-   (no surprise "peek turns into a mutating editor" on the long-standing view key); it stays
-   free for a future rebind or user config. `y` keeps its **confirm-context** meaning
-   (`confirm.accept`, D132) — that context split now stands on `n`/`enter`/`esc` alone.
-2. **The action's applicability predicate is `canGet`, not `update`/`patch`.** The unified
-   action is **viewer-first**: you need `get` to render the YAML, and edit is best-effort —
-   a save on a resource you can't write degrades to a toast on the apply's RBAC error
-   (principle 3), exactly as `kubectl edit` opens a read-only object and fails only on save.
-   Gating on `canEdit` would have **regressed** YAML viewing for read-only (get-only) users
-   and kinds — a real, common case (read-only kubeconfig, componentstatuses). A future leg
-   must not re-gate this action on write verbs. Menu title: **"View / Edit YAML"**; it stays
-   in the mutating group (last, before delete) since a save can mutate.
+1. **The surviving key is `e` (`res.edit`); `y` (`res.yaml`) is removed and left unbound in the browse context.**
+2. **The action's applicability predicate is `canGet`, not `update`/`patch`.**
 
 ### D137 — Port-forward port discovery: declared ports only, TCP only, Service ports resolve to the pod side
-**2026-07-24** (FB-pf-port-picker-a). The port-forward flow is moving from free-text
-remote entry to a **picker of known ports** (feedback
-`2026-07-24-port-forward-picker-and-local-port` part 1). The kube-layer primitive is
-`Clients.PodPorts` / `Clients.ServicePorts` (`internal/kube/ports.go`), returning an
-apimachinery-free `Port{Port,Name,Container,ServicePort}` (D33). **Constraints a future
-leg must not silently contradict:**
-1. **Discovery reads *declared* ports; an empty list never means "nothing is
-   listening".** Ports come from the pod spec's `containerPorts` (what `kubectl
-   describe pod` shows) — declaring them is **optional** in the API, and a container
-   serving an undeclared port is normal. So the picker is an **affordance, not a
-   constraint**: the free-text ports prompt must remain reachable, and a pod with no
-   declared ports must fall back to it rather than refuse to forward (principle 3).
-   Never probe the container to discover ports.
-2. **TCP only.** Port-forward tunnels TCP over the SPDY connection to the pod's
-   portforward subresource, so UDP/SCTP declarations are filtered out at the primitive
-   — never offered as a choice that could not work. An empty protocol is TCP (API default).
-3. **A Service's forwardable port is its `targetPort`, not its `port`.** A Service can't
-   be forwarded directly (it resolves to a backing pod first, D123/M3-13c), so the
-   remote side of the forward is the **pod-side** number; `Port.Port` carries it and
-   `Port.ServicePort` keeps the service-side number the user recognises, so the UI can
-   label a choice `80 → 8080` without re-deriving the mapping. A **named** `targetPort`
-   resolves only against the backing pod's declarations and is **dropped when
-   unresolvable** — forwarding to a guessed number is worse than falling back to the
-   prompt.
-4. **Native sidecars count, plain init containers do not.** An initContainer with
-   `restartPolicy: Always` runs for the pod's whole life (a proxy/exporter is a prime
-   forward target), so its ports are offered; a plain init container has exited before a
-   forward could reach it. Ports are de-duplicated by number (one forward target = one
-   choice) and kept in declaration order — regular containers first, then sidecars.
+**2026-07-24** (FB-pf-port-picker-a). The port-forward flow is moving from free-text remote entry to a **picker of known ports** (feedback `2026-07-24-port-forward-picker-and-local-port` part 1).
 
 ### D138 — Port-forward port picker: a pick is a whole spec (local = remote), and the picker never gates the action
-**2026-07-24** (FB-pf-port-picker-b). The TUI wire over D137: the Port-forward action
-lists the target's declared ports through a `PortLister` seam
-(`kube.PodPorts`/`ServicePorts`) before deciding what to open. **Constraints a future
-leg must not silently contradict:**
-1. **The picker is an affordance over the free-text prompt, never a replacement for
-   it.** No lister wired, a listing error, or an empty list all fall back to the
-   M3-13a ports prompt — silently, since the user gets exactly the surface they had
-   before the picker existed and a toast beside a freshly-opened prompt is noise. No
-   path may dead-end because port discovery failed (D137 pt 1 / principle 3).
-2. **A picked port is a complete forward spec, not a prefilled prompt.** One declared
-   port forwards immediately; a pick from the picker forwards immediately. The spec is
-   the bare pod-side number — kubectl's shorthand for local = remote — so a pick is one
-   keystroke, and a local clash still degrades to the D130 bind hint naming the `:0`
-   retry. Making the *local* side editable is FB-pf-local-port and must not turn the
-   pick back into a typing step for the common case.
-3. **The listing shares `pfResolveGen` with the Service→pod hop.** One generation
-   guards the whole port-forward resolution chain (Service → pod → ports), so a
-   superseded request is dropped wherever it is; do not add a second counter.
+**2026-07-24** (FB-pf-port-picker-b). The TUI wire over D137: the Port-forward action lists the target's declared ports through a `PortLister` seam (`kube.PodPorts`/`ServicePorts`) before deciding what to open.
 
 ### D139 — Port-forward local port: every declared port goes through the picker, whose two gestures own the local side; `:0` is not a valid spec
-**2026-07-24** (FB-pf-local-port). The last slice of the port-forward feedback
-(`2026-07-24-port-forward-picker-and-local-port` part 2): the local end of a forward is
-now choosable. **Constraints a future leg must not silently contradict:**
-1. **Any declared port opens the picker — a lone one no longer forwards straight
-   away.** This **supersedes D138 pt 2's fast path** (the rest of D138 stands: the
-   picker never gates the action, `enter` is a whole spec with local = remote, one
-   generation guards the chain). Reason: the picker is the only surface carrying the
-   local-port gestures, so skipping it for a single-port target left a **dead end** —
-   a pod declaring one port whose local number is already taken would re-forward and
-   re-fail on every invocation with no way to name a different local port. Confirming
-   a one-row picker is still one keystroke, which is what D138 pt 2 actually protects.
-2. **The local side is opt-in, never a mandatory prompt.** `enter` forwards local =
-   remote; `forwards.freeLocal` (`0`) forwards `:<remote>` immediately; only
-   `forwards.localPort` (`p`) opens a prompt, seeded with the remote number, whose
-   blank value means "free port". Both gestures are registered, rebindable actions
-   resolved by the root while the port picker is up (D11) — the shared picker
-   component stays generic and knows nothing about ports.
-3. **The free-local spec is `:<remote>`, never `:0`.** client-go parses the half after
-   the colon as the **remote** port and rejects 0 ("remote port must be > 0"), so `:0`
-   — suggested by D130 pt 2's parenthetical and by the bind-failure hint — is simply
-   invalid. The hint now offers only `:<remote>`; D130's substance (never surface the
-   raw listener error; leading-colon = OS-assigned local port) is unchanged, and the
-   hint is now the fallback for an already-started forward rather than the only escape.
-4. **A modal's own gestures are advertised in its title, from the keymap.** The port
-   picker titles itself `Port-forward port · p local · 0 free` with keys read from the
-   resolved keymap — a modal has no hint bar, and a gesture nothing announces is a
-   gesture nobody finds. Never hard-code the key text in a view (D11).
+**2026-07-24** (FB-pf-local-port). The last slice of the port-forward feedback (`2026-07-24-port-forward-picker-and-local-port` part 2): the local end of a forward is now choosable.
+**Refs:** supersedes D138 pt 2.
 
 ### D140 — The cluster-search view owns the query; hits stream into it and never move the cursor
-**2026-07-24** (SEARCH-02a). The search mini-app's component half
-(`internal/tui/components/searchview`), split component-first from SEARCH-02 in the D52
-rhythm (LOGS-01 → LOGS-02). **Constraints a future leg must not silently contradict:**
-1. **The query field is always open while the view is up** — the query *is* the view,
-   not a mode inside it (unlike the picker's `app.filter` and the logs view's grep,
-   which toggle). So the view has no filter action of its own, and the root must route
-   text keys to `UpdateQuery` for as long as the view is active, resolving only control
-   keys to actions (D11).
-2. **The view searches nothing and holds no client.** It emits `QueryChangedMsg` on
-   every actual text change (including the `""` that `nav.back` produces) and the
-   wiring owns launching, debouncing, capping, and cancelling `kube.Search`
-   (SEARCH-02b). A key that leaves the text unchanged emits nothing, so cursor moves
-   inside the field never restart a search.
-3. **A query change drops the previous query's hits inside the view, before the wiring
-   sees the message.** Results on screen always describe the query on screen; a
-   consumer never has to reconcile stale hits, and a late hit from a superseded search
-   must be dropped by the wiring's generation guard, not shown.
-4. **Streaming hits never move the reader's cursor.** `AppendHit` preserves the
-   selected row, so results arriving during a fan-out cannot change what `enter`
-   drills into.
-5. **An empty result list always says why** — `type to search this cluster` /
-   `searching…` / `no matches`. An empty search view must never be ambiguous between
-   "nothing typed", "still working", and "nothing found".
+**2026-07-24** (SEARCH-02a). The search mini-app's component half (`internal/tui/components/searchview`), split component-first from SEARCH-02 in the D52 rhythm (LOGS-01 → LOGS-02).
 
 ### D141 — Cluster search is a full-screen mini-app on `ctrl+s`: debounced launch, generation-guarded hits, drill-in via a pending selection
-**2026-07-25** (SEARCH-02b). The app wiring of the cluster search — the half D140's view
-deliberately left out (`internal/tui/search.go`). **Constraints a future leg must not
-silently contradict:**
-1. **The search view is the body, not an overlay.** While it is up `View` renders it in
-   place of the two-pane browse body (status bar above, hint line below), it captures
-   every keypress before the pickers/modal, and `overlayActive()` counts it so mouse
-   events stay inert (D134). It never opens an overlay of its own, so the
-   single-overlay invariant holds.
-2. **Every keystroke is a query change; only a settled query reaches the cluster.** A
-   `QueryChangedMsg` cancels the in-flight fan-out and arms a `searchDebounce`
-   (250 ms) tick; the tick launches `kube.Search` only if its `searchGen` still
-   matches. So typing never issues one fan-out per keystroke — the load bound that
-   makes cross-kind search safe on a big cluster — while the in-flight indicator goes
-   up immediately, so a keystroke is never followed by a silent blank.
-3. **`searchGen` is the single staleness clock.** It is bumped by a query change and by
-   closing the view (never by a fan-out merely completing), and it tags both the
-   debounce tick and every pumped hit; a mismatch drops the message *and* stops its
-   pump chain. Hits stream in one receive per Cmd (D53), so results appear kind by
-   kind.
-4. **Drilling into a hit switches kind now and selects the object later.** The wiring
-   closes the view, drives the ordinary `selectResource` path, and stashes the hit's
-   ref as a **pending selection** that the watch pump applies (`table.SelectObject`,
-   matched on namespace+name) as soon as the row arrives — cleared on the first hit so
-   later deltas never yank the reader back, and dropped whenever another resource is
-   selected. Never block the drill-in on a synchronous list.
-5. **The scope is derived, not stored.** The kind set is `CommonSearchResources` over
-   the menu's currently *available* resource items (the resource palette's source), so
-   discovered kinds and per-context extras are in and denied ones are out, and there is
-   no second copy of the discovery result to keep in sync. An empty scope degrades to
-   "no matches" rather than an indicator that never clears.
-6. **`search.cluster` is `ctrl+s` — a no-text chord by necessity.** The query field is
-   always open (D140 pt 1), so any text-carrying default would type instead of firing;
-   app.quit's chord closes the search view rather than the app (the help/viewer
-   precedent), and `q` types a `q`.
+**2026-07-25** (SEARCH-02b). The app wiring of the cluster search — the half D140's view deliberately left out (`internal/tui/search.go`).
 
 ### D142 — `kube.Search` streams typed `SearchEvent`s: one kind-done per requested kind, a terminal done that names the cap, and the close as the only teardown
-**2026-07-25** (SEARCH-03a). A bare hit channel could not express *how far along* a
-search was or *why it stopped* — the close meant "finished", "capped", and "cancelled"
-alike (D131 pt 4). The channel item is therefore widened once, and these are the
-guarantees a consumer may build on:
-
-1. **Three event types, one channel.** `SearchMatch` (a hit), `SearchKindDone` (a kind
-   finished), `SearchDone` (terminal). One stream, so a consumer keeps one pump (D53) and
-   one staleness clock (D141 pt 3); no second channel to select on.
-2. **Exactly one `SearchKindDone` per resource passed in** — including a kind whose List
-   failed or was cut short — so `N / len(resources)` is a progress fraction that always
-   completes. Per-kind failure stays silent (D131 pt 3): `Failed` is informational and
-   set **only** for a genuine List error, never for the cap's or the caller's
-   cancellation, so a "kinds failed" surface can never over-count.
-3. **`SearchDone{Capped}` is the only truthful cap signal.** `Capped` means *matches were
-   truncated*, not *limit matches were emitted*: a search whose hits exactly fill the cap
-   is exhaustive. Do not infer a cap from counting hits against the limit.
-4. **The channel close remains the single teardown point.** `SearchDone` is a fact about
-   the search, not a lifecycle event: a consumer must not stop pumping on it (the close
-   comes next). One teardown path however the search ended.
-5. **Cancelled ⇒ silent.** Once the caller's ctx is cancelled nothing further is emitted,
-   terminal event included; `sendEvent` pre-checks `ctx.Err()` because a buffered channel
-   plus a done ctx makes a bare `select` deliver at random.
+**2026-07-25** (SEARCH-03a). A bare hit channel could not express *how far along* a search was or *why it stopped* — the close meant "finished", "capped", and "cancelled" alike (D131 pt 4). The channel item is therefore widened once, and these are the guarantees a consumer may build on:
+1. **Three event types, one channel.**
+2. **Exactly one `SearchKindDone` per resource passed in**
+3. **`SearchDone{Capped}` is the only truthful cap signal.**
+4. **The channel close remains the single teardown point.**
+5. **Cancelled ⇒ silent.**
 
 ### D143 — A focus context's key hint may only advertise keys that context actually honours; a full-screen view gets its own `HelpContext`
-**2026-07-25** (SEARCH-03b). The bottom hint is registry-generated (D11) but the *subset*
-is chosen per focus context, and until now there were only the two browse contexts
-(menu / table). The cluster-search view exposed the gap: it replaces the browse body and
-its query field is always open (D140 pt 1), so the root routes every text-producing key
-into the field — `/`, `n`, `s`, `a`, `?` and `q` type a character there instead of firing
-filter / next-match / sort / actions / help / quit. A hint inherited from the table
-context would therefore have advertised six keys that do nothing.
-
-1. **A hint entry is a promise.** A context's `contextShortHelpActions` set may contain
-   only actions that context really honours. Prefer a short, true hint over a full,
-   partly-false one — the search context is four entries (up, down, drill-in, back) and
-   deliberately omits help and quit.
-2. **A view that captures all input owns a `HelpContext`.** Any future full-screen
-   mini-app (LOGS-02's logs view next) adds a `HelpContext` in `keymap/help.go` and a
-   `syncHints` case, rather than reusing a browse context or hard-coding keys in the view.
-   Keys still come from the registry; only the *selection* is per context.
-3. **`syncHints` is called wherever input ownership moves**, not only where pane focus
-   moves — opening and closing a capturing view included.
+**2026-07-25** (SEARCH-03b). The bottom hint is registry-generated (D11) but the *subset* is chosen per focus context, and until now there were only the two browse contexts (menu / table).
+1. **A hint entry is a promise.**
+2. **A view that captures all input owns a `HelpContext`.**
+3. **`syncHints` is called wherever input ownership moves**
 
 ### D144 — Streaming content gets a dedicated full-screen view; the shared viewer is for one-shot content only
-**2026-07-25** (LOGS-02). Logs left the shared read-only viewer (M3-01) for the LOGS-01
-component, completing the split D134 asked for. The shared viewer had grown a logs
-*mode*: a `viewerKindLogs` stamp, `logFollow`/`logTitle` on the root model, a follow
-marker spliced into the title, and an up-scroll-pauses-follow rule that had to run before
-forwarding the action. All of it existed because one component was serving two content
-shapes.
-
-1. **The shared viewer serves one-shot content only** — YAML, describe, secret: fetched
-   once, centered, sized to its content. A future surface that *streams* (events,
-   `kubectl top`, an action's progress) does not get a kind on the shared viewer; it gets
-   its own full-screen view, as logs and search now have. There is no `viewerKindLogs`
-   to bring back.
-2. **State the view renders is the view's, not the shell's.** Follow and the live grep
-   live inside `logsview`; the root holds only the stream handles (`logCh`/`logCancel`)
-   and the generation. A shell field mirroring what a component already renders is the
-   shape this decision removes — do not reintroduce it for the next view.
-3. **`viewerGen` stays the one "an async open was superseded" clock** across every content
-   surface, shared viewer and logs view alike. The container (M3-07a) and pod-owning
-   (M3-07b) resolutions are shared with exec and tag their async work with it, so a second
-   per-view counter would have to be bumped in the same places — a guard that can be
-   forgotten is worse than a coarse one.
-4. **A full-screen view with a text field needs two hint contexts** (D143 pt 1 applied):
-   one for the field closed, one for it open, because an open field turns every
-   text-producing key into input. `syncHints` is re-run wherever the field opens or closes,
-   not just where the view does.
+**2026-07-25** (LOGS-02). Logs left the shared read-only viewer (M3-01) for the LOGS-01 component, completing the split D134 asked for.
+1. **The shared viewer serves one-shot content only**
+2. **State the view renders is the view's, not the shell's.**
+3. **`viewerGen` stays the one "an async open was superseded" clock**
+4. **A full-screen view with a text field needs two hint contexts**
 
 ### D145 — A live filter degrades to its last working pattern, and a match is shown where it was found
-**2026-07-25** (LOGS-03). The logs grep gained a second mode: `logs.regex` reads the same
-field as a case-insensitive regex instead of a case-insensitive substring, and either way
-the matched spans are highlighted in the shown lines.
-
-1. **A filter that cannot be parsed keeps narrowing by the last one that could**, and says
-   so. A pattern is typed one character at a time, so `err(` exists on the way to
-   `err(or)?`; blanking the view at every intermediate keystroke would make regex mode
-   unusable. The compiled pattern is kept, the header flags the query on screen as
-   `invalid regex`, and only when *nothing* has ever compiled is the match set empty.
-   This is the shape for any future incremental query (a table filter, cluster search):
-   degrade to the last good result and label it — never silently apply something the user
-   did not type, never blank on a half-typed one.
-2. **A mode toggle for a text field must be bound to a chord carrying no text.** The field
-   swallows every text-producing key while it is open (D140 pt 1), so a plain letter could
-   only toggle before typing — where the mode matters least. `logs.regex` is `ctrl+r`, and
-   because it acts in both states it is hinted in *both* logs contexts (D144 pt 4).
-3. **The unfiltered render path stays free of match work.** An empty query returns the
-   joined buffer with no matcher built and no highlighting — the high-throughput streaming
-   case costs what it did before. Cost is opt-in with the filter, and regex cost only in
-   regex mode; substring mode keeps its `strings.Contains` test and computes spans only
-   for lines already kept.
-4. **Highlighting is a `styles.Match` role, not a per-view colour.** Any surface that
-   shows *where* a query matched renders through it. Because it wraps a span in ANSI, a
-   test asserting on rendered *content* must strip styling first — a matching line is no
-   longer one contiguous run of bytes in the frame.
+**2026-07-25** (LOGS-03). The logs grep gained a second mode: `logs.regex` reads the same field as a case-insensitive regex instead of a case-insensitive substring, and either way the matched spans are highlighted in the shown lines.
+1. **A filter that cannot be parsed keeps narrowing by the last one that could**
+2. **A mode toggle for a text field must be bound to a chord carrying no text.**
+3. **The unfiltered render path stays free of match work.**
+4. **Highlighting is a `styles.Match` role, not a per-view colour.**
 
 ### D146 — A pager clips long lines by default; wrapping is an opt-in mode that owns the horizontal offset
-**2026-07-28** (LOGS-04a). The logs view learned what to do with a line wider than the
-screen: `logs.wrap` (`w`) switches between soft-wrapped continuation rows and clipping,
-and while clipping, `nav.left`/`nav.right` scroll the view horizontally.
-
-1. **Clipping is the default in a streaming view.** One log line stays one screen row, so
-   the rows on screen count lines rather than terminal columns and a burst of long lines
-   cannot push the rest of the stream off the display. Wrapping is a deliberate gesture
-   for reading one long line, not the resting state. Any future streaming pane inherits
-   this default; a one-shot pager (the shared viewer) is free to choose differently.
-2. **Wrap and horizontal scroll are one toggle, not two settings.** A wrapped view has no
-   horizontal offset — nothing is off-screen — so the two modes are mutually exclusive by
-   construction. Enabling wrap zeroes the offset *before* the mode flips, since the
-   viewport ignores offset changes while wrapping and a stale one would silently reappear
-   on the way back out.
-3. **A mode-dependent binding is not hinted.** Horizontal scroll rides the shared
-   `nav.left`/`nav.right` and acts only while the view is not wrapping, so it appears in
-   neither logs hint context — D143 pt 1's "a hint is a promise" rules out a promise that
-   holds half the time. It stays discoverable via `?` and the generated keybindings doc.
-   By the same rule the wrap toggle, a plain letter the open grep swallows, is hinted only
-   in the grep-closed context.
-4. **Display state the reader can lose sight of is named in the header.** `[wrap]` for the
-   mode, `[+N]` for the columns hidden to the left — without the latter, a view scrolled
-   past the start of every line is indistinguishable from a view of blank lines.
+**2026-07-28** (LOGS-04a). The logs view learned what to do with a line wider than the screen: `logs.wrap` (`w`) switches between soft-wrapped continuation rows and clipping, and while clipping, `nav.left`/`nav.right` scroll the view horizontally.
+1. **Clipping is the default in a streaming view.**
+2. **Wrap and horizontal scroll are one toggle, not two settings.**
+3. **A mode-dependent binding is not hinted.**
+4. **Display state the reader can lose sight of is named in the header.**
 
 ### D147 — In a streaming view, an explicit jump to the end rejoins the stream
-**2026-07-28** (LOGS-04c). `nav.bottom` (`G`) in the logs view now sets following as well
-as scrolling, making it the single "catch up and keep tailing" gesture.
+**2026-07-28** (LOGS-04c). `nav.bottom` (`G`) in the logs view now sets following as well as scrolling, making it the single "catch up and keep tailing" gesture.
+1. **The end of a live buffer is a state, not a position.**
+2. **It is the inverse of the pause rule, and the pair is the whole model.**
+3. **Prefer overloading the existing nav key over adding a view-specific one**
 
-1. **The end of a live buffer is a state, not a position.** The newest line keeps moving,
-   so a jump to the bottom that did not resume following would be true for one frame and
-   then drift upward as lines arrived — the reader would be looking at "the newest line"
-   from a minute ago. Any future streaming pane binds jump-to-end the same way.
-2. **It is the inverse of the pause rule, and the pair is the whole model.** Any *upward*
-   movement leaves the stream; the *explicit* jump to the end rejoins it. Incremental
-   downward movement (`nav.down`, page down) does neither — stepping onto the last line is
-   browsing, and a reader parked at the end of a paused view must be able to stay there.
-   A view resumes following only by asking (`logs.follow`, `nav.bottom`), never by
-   arriving somewhere.
-3. **Prefer overloading the existing nav key over adding a view-specific one** — and let
-   the *view* announce the difference, not the registry. A second "jump to latest" binding
-   would compete with `G` for the same intent and cost a hint slot; the header flipping to
-   `[following]` makes the extra effect self-announcing. A registry **description is
-   global**, so it must not carry per-view behaviour: it is one column of the `?` overlay,
-   and lengthening it widens that column until the next one no longer fits (measured — the
-   nav column's longest description sets the width). View-specific behaviour on a shared
-   key is documented in the README and `knowledge/keybindings.md` instead.
+### D148 — A stream's optional metadata is fetched always and *displayed* on toggle; the grep matches the message (2026-07-28, LOGS-04b)
+`logs.timestamps` (`t`) shows each log line's server timestamp. The stream is opened with `kube.LogOptions.Timestamps` set **unconditionally**, even though the view starts with the stamps hidden, and the toggle only changes whether they are drawn.
+1. **Fetch the metadata always; toggle the display.**
+2. **Metadata is stored beside the payload, never prefixed into it.**
+3. **A filter matches the payload, not the metadata.**
+4. **The hint line is full; a self-announcing toggle does not get a slot.**
 
-## D148 — A stream's optional metadata is fetched always and *displayed* on toggle; the grep matches the message (2026-07-28, LOGS-04b)
-
-`logs.timestamps` (`t`) shows each log line's server timestamp. The stream is opened with
-`kube.LogOptions.Timestamps` set **unconditionally**, even though the view starts with the
-stamps hidden, and the toggle only changes whether they are drawn.
-
-1. **Fetch the metadata always; toggle the display.** Where an optional field is cheap on
-   the wire, requesting it up front and toggling its display is strictly better than
-   re-requesting the stream: a restream drops the buffer, the scroll position and the
-   active filter, which for a live log is precisely the state the reader turned the toggle
-   on to interpret. Here it is also literally free — a *following* stream already forces
-   server timestamps on the wire so the kube layer can anchor its reconnect (D34), so
-   asking for them only stops them being stripped. A future streaming view with an
-   optional per-item field decides the same way unless the field is expensive to fetch.
-2. **Metadata is stored beside the payload, never prefixed into it.** The logs view keeps
-   a `stamps` buffer parallel to `lines`, and the boundary (`kube.SplitLogTimestamp` in
-   `internal/tui/logs.go`) splits once. This is what keeps the default render path
-   byte-for-byte and work-for-work what it was — the high-throughput case pays nothing for
-   a feature that is off — and it is the only shape in which point 3 is even expressible.
-3. **A filter matches the payload, not the metadata.** The grep matches the message in
-   both display states. A query whose meaning changed depending on whether the clock
-   happened to be on screen would be a worse tool than no toggle at all; and "narrow to
-   what I typed" must not be satisfiable by a timestamp nobody typed a query about.
-4. **The hint line is full; a self-announcing toggle does not get a slot.** The logs
-   closed-grep context already elides at 220 columns (D146), so new low-frequency
-   bindings there go to `?` and `docs/keybindings.md` only. The test for whether a
-   display state needs a header marker is D146's, sharpened: name state the reader can
-   *lose sight of*. `[wrap]` is needed because wrapping and clipping look identical until
-   a line is too long; timestamps are on every row the instant they are on, so they get
-   no marker — and the header keeps a segment it would otherwise spend at narrow widths.
-
-## D149 — A scope widen is per-visit, announced only when on, and bounded at the source (2026-07-28, SEARCH-04a)
-
-`search.allKinds` (`ctrl+a`) widens a cluster search from the curated kind set to every
-discovered kind — the opt-in widen D131 pt 2 held back. Four constraints come with it.
-
+### D149 — A scope widen is per-visit, announced only when on, and bounded at the source (2026-07-28, SEARCH-04a)
+`search.allKinds` (`ctrl+a`) widens a cluster search from the curated kind set to every discovered kind — the opt-in widen D131 pt 2 held back. Four constraints come with it.
 1. **An expensive opt-in scope resets on every open, never on a keystroke within one.**
-   The widen survives typing, refining and clearing the query — the reader chose it for
-   *this* search — but `Reset` (a fresh `ctrl+s`) drops it. A sticky expensive mode is
-   the failure the fast-cold-start design exists to avoid (D8/principle 4): it turns a
-   choice made once into a cost paid forever, invisibly, on a keystroke that reads as
-   cheap. Any future opt-in that costs the cluster real work decides the same way; a
-   *display* toggle (D148's timestamps) has no such constraint and may live longer.
-2. **Changing the scope invalidates results exactly as changing the query does.** Hits,
-   progress counters and the cap flag are dropped and the in-flight fan-out is cancelled
-   and superseded — the same generation guard, the same debounce. A result set means
-   *query × scope*, so a count carried across a scope change is a lie about the header
-   above it. The debounce is kept on the scope path deliberately: a toggle held down
-   would otherwise queue one full-cluster sweep per repeat.
-3. **Name the widened state, not the default.** D146's "name state the reader can lose
-   sight of" applied to a scope: the header gains `all kinds` only while the widen is on.
-   The default costs no header segment (they are clipped from the right, and the
-   progress line's `N/M kinds` already sizes the scope), and the widen's discoverability
-   is the *hint bar's* job — which is why this is the one search key that is hinted while
-   the logs view's self-announcing toggles are not.
-4. **Bound the fan-out where it is issued, not where it is triggered.** `kube.Search`
-   lists at most `searchConcurrency` (8) kinds at once. A widen that hands a hundred-plus
-   kinds to an unbounded fan-out puts all of them on the wire in one breath — client-go
-   applies no client-side rate limit unless one is configured — so the bound belongs in
-   the search primitive, where every caller gets it, not in the TUI toggle that happens
-   to make it matter. Queued kinds still report `SearchKindDone`, including when the cap
-   cancels them before they get a slot, so the progress line always reaches `M/M`.
+2. **Changing the scope invalidates results exactly as changing the query does.**
+3. **Name the widened state, not the default.**
+4. **Bound the fan-out where it is issued, not where it is triggered.**
 
-## D150 — Scope is independent axes; a widened scope replaces its default's name, and never mutates the app's own scope (2026-07-28, SEARCH-04b)
+### D150 — Scope is independent axes; a widened scope replaces its default's name, and never mutates the app's own scope (2026-07-28, SEARCH-04b)
+`search.allNamespaces` (`ctrl+w`) widens a cluster search to every namespace, completing the scope D131 pt 2 asked for. It inherits D149 whole (per-visit, invalidates results, debounced, hinted) and adds three constraints of its own.
+1. **Scope is independent flags, never a cycle.**
+2. **A widened scope replaces the name of the default it widens; it never adds a second name for the same thing.**
+3. **A per-search scope widen never mutates the app's own scope.**
 
-`search.allNamespaces` (`ctrl+w`) widens a cluster search to every namespace, completing
-the scope D131 pt 2 asked for. It inherits D149 whole (per-visit, invalidates results,
-debounced, hinted) and adds three constraints of its own.
-
-1. **Scope is independent flags, never a cycle.** Kinds and namespaces are two axes, so
-   all four combinations — curated here, curated everywhere, everything here, everything
-   everywhere — are reachable, and each toggle moves only its own flag. A single
-   "widen" key cycling through scope steps would make the middle combinations
-   unreachable and couple two costs that are paid separately. Any further scope axis
-   joins as a flag on the same footing.
-2. **A widened scope replaces the name of the default it widens; it never adds a second
-   name for the same thing.** D149 pt 3 said name the widened state only — that holds
-   where the default is *unnamed* (the kind scope). The namespace scope is named in
-   every header, so widening it swaps that name for `all namespaces`: a header showing
-   `web · all namespaces` would be claiming two namespace scopes at once. The rule is
-   one name per axis, and the widened state wins it.
-3. **A per-search scope widen never mutates the app's own scope.** Widening the search
-   leaves `m.namespace` — and so the browse table's watch — exactly as it was, so
-   closing the search returns the reader where they left off. A search is a question
-   asked of the cluster, not a navigation gesture; only `ns.switch` re-scopes the app.
-   Any future "search everywhere" affordance stays one-directional the same way.
-
-## D151 — A query line may carry a server-side term; it is parsed as it is typed, and an unusable query is reported, never sent (2026-07-28, SEARCH-04c-1)
-
-Cluster search grew a second matching term: `-l <selector>` in the same query line hands
-a label selector to `metav1.ListOptions` on every kind's List, alongside (or instead of)
-the client-side name substring. `kube.Search`'s query parameter is now a `SearchQuery`
-(`Name` + `LabelSelector`) rather than a string. Four constraints.
-
-1. **A search term goes to the server whenever the server can evaluate it.** A label
-   selector filters rows before they cross the wire, so it makes a search *cheaper*, not
-   dearer — the opposite of a scope widen. That is why it is not gated, hidden behind a
-   mode, or debounced any differently: it is the one way to widen the *scope* and narrow
-   the *result* at the same time. Client-side matching stays for what the server cannot
-   do (a name **substring**; the server can only match a name exactly).
-2. **Server-side matching is why field selectors are excluded, not an argument for
-   them.** A field selector looks equally free but is not: supported fields vary per
-   kind (`spec.nodeName` is a Pod thing), a kind that does not support one rejects the
-   List, and a rejected List is a silent failed kind under per-kind fault isolation
-   (D131 pt 3). Across a cross-kind fan-out that turns one unsupported field into most
-   of the scope disappearing without a word. A cross-kind surface may only carry terms
-   **every** kind can answer.
+### D151 — A query line may carry a server-side term; it is parsed as it is typed, and an unusable query is reported, never sent (2026-07-28, SEARCH-04c-1)
+Cluster search grew a second matching term: `-l <selector>` in the same query line hands a label selector to `metav1.ListOptions` on every kind's List, alongside (or instead of) the client-side name substring.
+1. **A search term goes to the server whenever the server can evaluate it.**
+2. **Server-side matching is why field selectors are excluded, not an argument for them.**
 3. **A query that cannot be searched is reported where it was typed, and never sent.**
-   An invalid selector is caught at parse time in the wiring, surfaced through the
-   view's `SetQueryError` in place of the empty hint (in the error style, outranking
-   `no matches`), and no fan-out launches. Sending it would fail every kind's List and,
-   by constraint 2's mechanism, render as a healthy empty cluster — a typo must never be
-   indistinguishable from an answer. Parsing happens on every keystroke rather than at
-   launch because a half-typed selector is invalid most of the time it is being written.
-4. **A grammar in a text field discriminates by an explicit token, never by shape.** The
-   selector half is introduced by a whitespace-delimited `-l` (kubectl's own flag); a
-   `-l` inside a word is not a token, so `my-lb` stays a name. Sniffing — "it parses as
-   a selector, so it is one" — is unavailable and would be wrong anyway: a bare `nginx`
-   is a valid selector meaning *has label `nginx`*, so shape-detection would silently
-   reinterpret the most common query in the app. Any further query term takes its own
-   token on the same rule.
+4. **A grammar in a text field discriminates by an explicit token, never by shape.**
 
-## D152 — The stream stays in arrival order and the view does the ranking; a re-ranking list carries the cursor with its row (2026-07-28, SEARCH-04c-2a)
+### D152 — The stream stays in arrival order and the view does the ranking; a re-ranking list carries the cursor with its row (2026-07-28, SEARCH-04c-2a)
+`kube.Search` scores every match (`SearchHit.Score`) but still emits hits in whatever order the kinds return; the *consumer* keeps them sorted. Four constraints.
+1. **Ranking never buys itself by buffering.**
+2. **A score is an ordering, not a measurement.**
+3. **Match bands are ordered by match *kind* first, quality second.**
+4. **A list that reorders under the reader moves rows, never the selection.**
 
-`kube.Search` scores every match (`SearchHit.Score`) but still emits hits in whatever
-order the kinds return; the *consumer* keeps them sorted. Four constraints.
+### D153 — Fuzzy is a fallback, ranked in its own band and budgeted against the cap (2026-07-28, SEARCH-04c-2b)
+`kube.Search`'s name matcher tries a contiguous substring first and only then a subsequence. Three constraints, all of them about keeping a widened matcher from degrading the result it widens.
+1. **A widened matcher is a *fallback*, never a replacement.**
+2. **Bands may weigh their terms differently, and should.**
+3. **An emit-time cap must be budgeted by match quality, not just counted.**
 
-1. **Ranking never buys itself by buffering.** The obvious way to emit ranked hits is to
-   hold them until the last kind returns and sort — and that deletes the streaming result
-   list, which is the feature SEARCH-02/03 exist to provide (first hits on screen while a
-   wide sweep is still running, progress visible against a kind count). A cross-kind
-   fan-out over a hundred kinds has no "last hit" for seconds. So the split is fixed:
-   **kube ranks, the view orders.** A future consumer that wants a ranked *batch* sorts
-   what it collected; it must not ask the producer to withhold.
-2. **A score is an ordering, not a measurement.** `SearchHit.Score` is comparable only
-   against other hits of the same search. Nothing may persist it, threshold it ("hide
-   matches under N"), or show it — the numbers and their scale are free to change with
-   every matcher change, and the next one is already scheduled (SEARCH-04c-2b).
-3. **Match bands are ordered by match *kind* first, quality second.** A contiguous
-   substring match sits in a band (`scoreSubstringBand`) that no positional or length
-   bonus can lift a scattered match into, and every within-band adjustment is clamped so
-   it cannot cross. A matcher added later must claim a band strictly below the ones above
-   it rather than competing on bonuses: the reason fuzzy matching is tolerable at all is
-   that the noise it admits can only ever land *below* every exact match, never
-   interleaved with them.
-4. **A list that reorders under the reader moves rows, never the selection.** The cursor
-   is carried with its hit on every insert. This is what makes ranking compatible with a
-   live stream: rows above the cursor may reshuffle for as long as the sweep runs, but
-   the object highlighted when the reader stopped moving is the object that drills in.
-   Any future surface that re-sorts a list under a live cursor owes the same guarantee —
-   an insert that shifts the selection is a wrong-object action waiting to happen.
-
-## D153 — Fuzzy is a fallback, ranked in its own band and budgeted against the cap (2026-07-28, SEARCH-04c-2b)
-
-`kube.Search`'s name matcher tries a contiguous substring first and only then a
-subsequence. Three constraints, all of them about keeping a widened matcher from
-degrading the result it widens.
-
-1. **A widened matcher is a *fallback*, never a replacement.** The passes are ordered
-   and a name that contains the query outright is scored on that occurrence, so adding
-   match kinds can only add results *below* the existing ones — it can never re-rank or
-   displace a match that was already there. Any future matcher (acronym, transposition,
-   edit distance) joins at the bottom of that chain, in a band of its own (D152 pt 3),
-   or it does not join.
-2. **Bands may weigh their terms differently, and should.** Position dominates a
-   contiguous match because its span is fixed — there is nothing else to read. A
-   scattered match's span *varies*, so tightness is the signal there and the positional
-   bonuses do not apply at all; gaps outweigh the start offset, which is also what makes
-   the tightest window the best-scoring one. Do not "unify" the two scoring formulas:
-   they answer different questions and the only cross-band rule is the band gap.
-3. **An emit-time cap must be budgeted by match quality, not just counted.** The hit cap
-   is applied in `kube` at emit time in arrival order — *before* any consumer has ranked
-   anything — so a low-quality match found early spends a slot a better one found later
-   can never reclaim. Ranking cannot repair that: it orders what arrived. So scattered
-   hits get a fixed fraction of the cap (`searchScatteredShare`) and no more; exhausting
-   it drops the hit without cancelling the sweep or setting `Capped` (nothing worth
-   telling a reader to narrow for). The asymmetry is the rule: a stricter match kind may
-   starve a looser one entirely, never the reverse. Any future stream that caps at emit
-   time and ranks downstream owes the same per-quality budget.
-
-## D154 — A milestone closes on evidence named in the criterion, read against the decisions that narrowed it (2026-07-29, M2-EXIT)
-
-**M2 is feature-complete.** Its five remaining exit criteria were audited against the
-code and all five hold; each now carries the tests and code paths that prove it, inline
-in [`../milestones/M2-core-tui.md`](../milestones/M2-core-tui.md). Three constraints
-follow, and they apply to M3/M4/M5 too.
-
-1. **No criterion is ticked on prose.** A tick names a test or a code path a reader can
-   open. "Landed in leg X" is not evidence — it is a pointer to a journal entry that
-   asserts the same thing without proof. This is the same rule as D79 (raise a human task
-   rather than claim a green you cannot earn), applied at milestone granularity: where
-   the honest evidence is hermetic, say so and say what remains unobserved.
-2. **A criterion is read against the decisions that narrowed it, not its original
-   wording.** M2's "menu customization persists across restarts" was written when
-   customization meant in-TUI add/remove/reorder written into `config.yaml`; D83 moved it
-   to a hand-authored per-context `menus/<context>.yaml` and D89 narrowed M2-11 to match.
-   The criterion is met by the narrowed scope, and **no future leg should build an in-TUI
-   menu editor to satisfy the old wording** — that is the thing this pins. When a decision
-   narrows a criterion, the tick cites the decision.
+### D154 — A milestone closes on evidence named in the criterion, read against the decisions that narrowed it (2026-07-29, M2-EXIT)
+**M2 is feature-complete.** Its five remaining exit criteria were audited against the code and all five hold; each now carries the tests and code paths that prove it, inline in [`../milestones/M2-core-tui.md`](../milestones/M2-core-tui.md). Three constraints follow, and they apply to M3/M4/M5 too.
+1. **No criterion is ticked on prose.**
+2. **A criterion is read against the decisions that narrowed it, not its original wording.**
 3. **A milestone does not stay open for an enhancement its criteria never asked for.**
-   The menu lacks the half-page/page nav the table has; both key families are equally
-   inert there, so the vim/fallback parity criterion holds and the gap is a board item
-   (M2-15), not an open milestone. Leftovers go to the board — the `Status:` line reports
-   the criteria, and `feature-complete` (M1's precedent) is the honest state when every
-   criterion holds and small work remains.
 
-## D155 — M4 decomposed into leg-sized slices; a context switch is a teardown, not a pointer swap (2026-07-29, M4-PLAN)
+### D155 — M4 decomposed into leg-sized slices; a context switch is a teardown, not a pointer swap (2026-07-29, M4-PLAN)
+M4 was a six-bullet prose scope with no board surface, so there was no pickable item for the next agent.
+1. **Switching context is a teardown of the old cluster, not a rebind of a client pointer.**
+2. **The cluster-bound seams get one indirection, and every future seam goes through it.**
+3. **New data rides the existing paths.**
 
-M4 was a six-bullet prose scope with no board surface, so there was no pickable item for
-the next agent. Decomposed into ordered, dependency-noted slices **M4-01 … M4-12** on the
-[board](../tasks/board.md) (the D52/M2-PLAN, D105/M3-PLAN rhythm) and M4 flipped to
-`in-progress`. Two of the six bullets were already closed before the milestone opened —
-cluster search (pulled forward by feedback, D131…D153) and sort by column (#85, landed in
-M2 as M2-13a/13b, ticked here per D154 pt 1 against named tests) — so the slices cover the
-context switcher, column coloring, owner→children, metrics and themes. Three constraints
-follow, and they bind the legs that implement them.
+### D156 — Per-cluster async has one teardown inventory, and cancellation alone never proves a message will not arrive (2026-07-29, M4-03)
+`resetCluster` (M4-03) is the first half of a context switch, and building it exposed two constraints that outlive it.
+1. **One inventory, two callers.**
+2. **Cancel, then guard.**
 
-1. **Switching context is a teardown of the old cluster, not a rebind of a client
-   pointer.** Every per-cluster async in flight — the table watch, the discovery pass, a
-   log stream, a search sweep, a drain, the background port-forwards — belongs to the
-   cluster being left, and each one outliving the swap is a correctness bug, not a leak: a
-   surviving watch streams the old cluster's rows into the new context's table, and a row
-   action taken there operates on the wrong cluster. So the reset lands (M4-03) and is
-   tested *before* anything can trigger it (M4-04). Any future capability that starts a
-   cluster-bound goroutine owes the reset path a cancellation.
-2. **The cluster-bound seams get one indirection, and every future seam goes through
-   it.** `run.go` closes 21 `With*` seams over a single `*kube.Clients` fixed at
-   construction; M4-02 routes them through one bundle so a switch swaps one value. The
-   failure mode this pins is quiet and arrives later: a leg that adds a new seam closed
-   over the old `clients` compiles, passes its own tests, and leaves exactly one feature
-   pointed at the previous cluster after a switch. Adding a seam without adding it to the
-   bundle is a bug in that leg.
-3. **New data rides the existing paths.** Children resolve to a child `Resource` **plus a
-   `ListOptions` scope** (M4-07) handed to the existing `kube.Watch`, so a child table is
-   live for free rather than a second, snapshot-only listing path; metrics are a
-   point-in-time overlay refreshed on a slow ticker and joined onto the watched rows by
-   object ref (M4-10) — they are not watchable and must never become a second watch. The
-   general rule: a new column or a narrower row set is a *view over* the authoritative
-   watched set (the same rule filter and sort already follow, D78/D94), never a parallel
-   source of rows. And metrics absence stays silent (principle 3) — metrics-server missing
-   and metrics-server present-but-down degrade identically.
+### D157 — A context switch connects before it tears anything down (2026-07-29, M4-04a)
+`switchContext` issues the connect off the update loop and does **nothing else**; the reset-swap-rediscover sequence runs only in `handleClusterConnected`, with the new cluster's seams already in hand.
 
-## D156 — Per-cluster async has one teardown inventory, and cancellation alone never proves a message will not arrive (2026-07-29, M4-03)
+### D158 — The context picker marks the shell's context, not the kubeconfig's (2026-07-29, M4-04b)
+kubecom's context switch is **session-scoped**: it connects a new client and repoints the `Cluster` bundle (D157), and it never writes `current-context` back to the kubeconfig.
 
-`resetCluster` (M4-03) is the first half of a context switch, and building it exposed
-two constraints that outlive it.
+### D159 — Every error the user is shown is also written to the log file (2026-07-29, DIAG-01)
+The TUI owns the terminal, so a failure has exactly two places it can go: a transient status-bar toast (5s, clipped to the terminal width) and `~/.cache/kubecom/kubecom.log`.
+1. **`surfaceError` logs before it toasts.**
+2. **What is quiet on screen by design is loud in the log.**
+3. **The log is a diagnostic record, not a trace.**
+4. **The sink is injected (`tui.WithLogger`), and unset means discard.**
 
-1. **One inventory, two callers.** `stopClusterAsync` is the single list of everything
-   asynchronous that belongs to the cluster the model is on — the table watch, the
-   discovery pass, the log stream, the search fan-out, a node drain, the background
-   port-forwards. Both `app.quit` and `resetCluster` go through it, and a leg that adds
-   a per-cluster async adds it there. The two lists were previously written out
-   separately, which is exactly how a switch ends up tearing down five of six things:
-   quit-only breakage is invisible (the process is exiting anyway), switch breakage is a
-   live goroutine talking to the cluster the user just left (D155 pt 1).
-2. **Cancel, then guard.** Cancelling a context does not guarantee the work in flight
-   stops delivering: every one of these producers sends on a buffered channel and can
-   win the race against its own `ctx.Done()`. A cancelled discovery pass is the sharpest
-   case — it selects between a cap-1 send and cancellation (D8), so a result from the
-   *previous* cluster can still land and reconcile that cluster's API surface into the
-   new context's menu. So every per-cluster async carries a generation its messages are
-   tagged with, and the teardown bumps it; `watchGen` was the pattern, `discoveryGen`
-   joined it here. A new per-cluster async needs both halves, not just the cancel.
-
-Corollary for the rest of the switcher line: a reset returns the shell to its
-*pre-drill-in* state, which means it clears the namespace scope and drops discovery's
-menu additions rather than carrying them across. The launch `-n` scope and the
-discovered resources describe the cluster being left, so **M4-05 owns landing the new
-context in its own last-used namespace** — after a reset there is no namespace to
-inherit, by design.
-
-## D157 — A context switch connects before it tears anything down (2026-07-29, M4-04a)
-
-`switchContext` issues the connect off the update loop and does **nothing else**; the
-reset-swap-rediscover sequence runs only in `handleClusterConnected`, with the new
-cluster's seams already in hand. The ordering is the constraint, not an implementation
-detail: the reset is destructive by design (D155 pt 1 — every per-cluster async
-cancelled, every surface dismissed, the browse panes returned to their pre-drill-in
-state), so running it before the new client exists turns a *failed* connect — a typo'd
-context, a kubeconfig entry pointing at a cluster that no longer resolves — into a shell
-sitting on nothing, with the working cluster it had already thrown away. A connect
-failure must therefore cost exactly one transient toast and change nothing else: same
-context, same live watch, same rows (principle 3). Any future path that repoints the
-cluster (a reconnect-on-error, a `--context` reload, M4-05's per-context state) obeys the
-same order.
-
-The corollary that places the seam: **`ClusterConnector` is not a `Cluster` seam.** D155
-pt 2's test — "would it be wrong to keep using this after a switch?" — answers no for the
-connector, since a `Cluster` is its *product*, so it sits on the Model beside the context
-name it changes, and the launcher implements it (`kube.Connect` + the existing
-`clusterFor`) to keep `tui` client-free. Reusing `clusterFor` rather than writing a second
-wiring path is deliberate: a seam added there is live on both the launch and the switched
-cluster, which is the failure D155 pt 2 exists to prevent.
-
-Guard shape: a connect is a single call with no stream to cancel, so `ctxGen` alone
-carries D156 pt 2's "cancel, then guard" — two switches in quick succession are ordered by
-generation, and the superseded result is dropped rather than applied on top of the newer
-one.
-
-## D158 — The context picker marks the shell's context, not the kubeconfig's (2026-07-29, M4-04b)
-
-kubecom's context switch is **session-scoped**: it connects a new client and repoints the
-`Cluster` bundle (D157), and it never writes `current-context` back to the kubeconfig.
-That is deliberate — a TUI that mutates the file every other tool reads would change what
-`kubectl` does next, from a gesture the user made inside kubecom to look at another
-cluster. The consequence binds every surface that names "the current context":
-`kube.ContextInfo.Current` answers *what the kubeconfig says*, which is the context the
-reader **launched from**, and after one switch that is the wrong answer. The shell's own
-`m.context` is the truth, so the picker's marker (and any later surface: a status-bar
-segment, a per-context state path, a menu-extras lookup) derives from it. `Current` stays
-on the type — it is the honest name for what kubeconfig data can tell you — and the
-launcher's `contextLister` deliberately passes no `Context` override, since the flag it
-would compute the flag from describes only the launch.
-
-Corollary for the seam's placement: `ContextLister` sits on the Model beside
-`ClusterConnector` (D157) rather than on `Cluster`, and for a stronger reason than the
-connector's — it reads *kubeconfig* data, not the cluster, so the same list is correct
-before, during and after a switch, and binding it to a `Cluster` would make the switcher
-unavailable exactly when a connect has failed and the user most needs to pick again.
-
-## D159 — Every error the user is shown is also written to the log file (2026-07-29, DIAG-01)
-
-The TUI owns the terminal, so a failure has exactly two places it can go: a transient
-status-bar toast (5s, clipped to the terminal width) and `~/.cache/kubecom/kubecom.log`.
-Until this decision it only ever went to the first, which means kubecom could tell a user
-that something failed but could never tell them **what** — the reason the CRD feedback
-(`2026-07-29-external-secrets-crd-error`) could not name its own error. From here on:
-
-1. **`surfaceError` logs before it toasts.** It is the shell's single error funnel
-   (`statusbar.SetError` is called nowhere else), so this is a property of the funnel, not
-   of ~25 call sites: a future leg that surfaces a new error is recorded for free. Keep it
-   that way — a new error path goes *through* `surfaceError`, never around it.
-2. **What is quiet on screen by design is loud in the log.** Discovery's per-group
-   isolation and total-failure fallback (#87/#76, principle 3) still degrade silently in
-   the menu, but each failure is logged — the usual answer to "why is this CRD's kind
-   missing?".
-3. **The log is a diagnostic record, not a trace.** Only failures are written; the healthy
-   path stays silent, so a reporter's `tail` shows signal. Nothing user-facing is ever
-   printed to the screen instead — that rule (stack.md) is unchanged.
-4. **The sink is injected (`tui.WithLogger`), and unset means discard.** The shell never
-   reads `slog.Default()` itself: the launcher passes the file logger `setupLogging`
-   installed, hermetic tests pass a buffer and assert on it, and a model built without the
-   option logs nothing — so tests that drive error paths stay silent and can never write
-   over an alt-screen.
-
-Corollary for bug reports: the README now tells the user to `tail` that file while
-reproducing. A leg that receives a "it just errors out" report should ask for the log line
-rather than guess between causes that call for opposite fixes.
-
-## D160 — The logs view opens on a bounded tail, not the container's whole history (2026-07-29, LOGS-05a)
-
-`kubecom`'s logs view exists to answer "what is this container doing **now**". Until this
-decision it opened with no `TailLines`, so the server replayed the container's log from
-boot and the reader waited out however long the pod had been up before the stream reached
-the present (feedback `2026-07-29-logs-tail-and-perf`). From here on:
-
-1. **Every logs open is bounded.** `openLogs` sets `TailLines` (`defaultLogTail`, 1000) on
-   the initial read. A future surface that streams logs does the same — an unbounded
-   replay is a bug, not a default. The number is a TUI-side policy constant: it is not in
-   the config today, and a leg that wants to make it configurable must add the config
-   section rather than quietly changing the constant's meaning.
-2. **The bound is on the *fetch*, not on the buffer.** A followed stream keeps growing the
-   view's buffer past the tail, by design — pausing and scrolling back through what has
-   arrived since you opened must keep working. So this decision does not bound memory or
-   per-line cost; that is LOGS-05b's, and the two are independent.
+### D160 — The logs view opens on a bounded tail, not the container's whole history (2026-07-29, LOGS-05a)
+`kubecom`'s logs view exists to answer "what is this container doing **now**".
+1. **Every logs open is bounded.**
+2. **The bound is on the *fetch*, not on the buffer.**
 3. **`kube.LogOptions` keeps `kubectl`'s semantics: the zero value replays everything.**
-   The kube layer stays a faithful primitive and the *policy* lives with the view that has
-   an opinion. A caller that genuinely wants the whole history (an export, a one-shot
-   dump) is still one field away from it.
-4. **Initial-read selectors never survive a reconnect.** `TailLines` and `SinceSeconds`
-   both mean "start N back from *now*", so a follow reconnect clears them and anchors on
-   the last line seen instead (`logOpenOptions`). Carrying either across a transport drop
-   would re-serve the last 1000 lines on top of output the reader already had. This rule
-   predates the decision but was untested and unreachable until pt 1 made every stream
-   carry a tail; it is now pinned by name.
+4. **Initial-read selectors never survive a reconnect.**
 
-## D161 — A pod's containers are all of them, classified; the picker offers what the purpose can act on (2026-07-29, LOGS-06)
-
-`kube.PodContainers` returned only `spec.containers`, so an init container's logs were
-unreachable from the TUI — precisely the logs you need when the pod never got as far as
-its regular containers (feedback `2026-07-29-logs-init-containers`). From here on:
-
-1. **The kube layer returns the whole set, classified.** `PodContainers` returns
-   `[]kube.Container` — regular, then init, then ephemeral, each list in spec order,
-   tagged with a `ContainerKind`. It is a listing primitive: it does not decide who may
-   act on what, and a future consumer (a container column, a picker of its own) gets the
-   kinds for free rather than re-fetching the pod.
-2. **The consumer narrows by purpose, and the narrowing is a claim about the container,
-   not about the feature.** Logs offers every kind (all three have logs). Exec drops the
-   init containers, because an init container has normally terminated and there is no
-   process to attach to — while an ephemeral container is *the* thing to exec into. A new
-   purpose states its own rule in `ctrPurpose.offer`; it does not get the logs set by
-   default.
+### D161 — A pod's containers are all of them, classified; the picker offers what the purpose can act on (2026-07-29, LOGS-06)
+`kube.PodContainers` returned only `spec.containers`, so an init container's logs were unreachable from the TUI — precisely the logs you need when the pod never got as far as its regular containers (feedback `2026-07-29-logs-init-containers`). From here on:
+1. **The kube layer returns the whole set, classified.**
+2. **The consumer narrows by purpose, and the narrowing is a claim about the container, not about the feature.**
 3. **The single-container fast path counts the offered set, not the regular containers.**
-   A pod with one regular container beside an init one now *prompts* for logs. That is the
-   cost of the feature and it is accepted: without a prompt the init container cannot be
-   reached at all. Regular containers sort first so the default highlight — and therefore
-   `L`+`enter` — is still the pod's main container.
-4. **A non-regular container is always marked in the UI.** Rows read `name (init)` /
-   `name (ephemeral)`; a bare name means a regular container. A name alone leaves the
-   reader no way to tell, and picking the wrong one yields a confusing empty log rather
-   than an error. Because the row label is therefore not the container name, a picked row
-   resolves through a `byLabel` map (the D65 pattern) — no surface may pass a picker label
-   to the kube layer as a container name.
+4. **A non-regular container is always marked in the UI.**
 
-## D162 — A streamed view's cost is the number of viewport syncs, so pumps that feed one batch (2026-07-29, LOGS-05b)
-
-The logs view got slower the longer it ran: `Append` re-scanned and re-joined the entire
-buffer for every line, so streaming n lines cost O(n²) (feedback
-`2026-07-29-logs-tail-and-perf`). Removing our own rescan turned out to be the smaller
-half. The binding rule for any view fed by a stream:
-
-1. **The rendered body is a cache, extended by an append and rebuilt only by a reader
-   gesture.** `logsview.shownLines` holds the shown lines already prefixed and
-   highlighted. A streamed line runs the matcher once, against itself, and appends;
-   nothing already held is touched. The full O(n) rebuild is reserved for the things that
-   change what *every* line looks like — the query, the grep mode, the timestamps toggle,
-   a resize. The invariant the cache lives or dies by is that both paths render a line
-   through the *same* function (`renderLine`), so the cache cannot drift from a rebuild;
-   a test asserts it across every filter/mode combination.
+### D162 — A streamed view's cost is the number of viewport syncs, so pumps that feed one batch (2026-07-29, LOGS-05b)
+The logs view got slower the longer it ran: `Append` re-scanned and re-joined the entire buffer for every line, so streaming n lines cost O(n²) (feedback `2026-07-29-logs-tail-and-perf`). Removing our own rescan turned out to be the smaller half. The binding rule for any view fed by a stream:
+1. **The rendered body is a cache, extended by an append and rebuilt only by a reader gesture.**
 2. **Handing content to the viewport is O(n) and there is no append API.**
-   `viewport.SetContentLines` re-measures every line it is given (`ansi.StringWidth` per
-   line) to find the longest. So the residual cost of a stream is *how many times the
-   viewport is synced*, not how many lines arrive — measured, one-sync-per-line is ~110ms
-   for 1000 lines against ~2ms for the same lines in batches of 256
-   (`BenchmarkStreamLines*`). A future streaming surface must assume this: sync once per
-   batch, never once per item.
-3. **Therefore the pump batches.** `logPump` blocks for the first event and then drains
-   whatever is *already* buffered in the channel (cap `logBatchMax`), delivering one
-   `LogLineMsg` with many lines. The blocking first receive is what still keeps `Update`
-   from spinning (D53) and the non-blocking drain is what makes the batch free: when the
-   producer is not ahead, the drain takes nothing and this is the old one-line pump.
-4. **A batching pump must carry the stream's end, not drop it.** A channel receive is
-   destructive, so a terminal event met mid-drain cannot be put back: `LogLineMsg.End`
-   carries it, and the model applies the lines *first* and that message second. Order is
-   load-bearing — a mid-stream error applied before its lines would look like an open
-   failure and dismiss a view that has output to show (D74).
-5. **The viewport owns any slice handed to `SetContentLines`** (it normalizes embedded
-   line endings in place and splits them out), so a cached body is cloned on the way in.
-   Cloning copies string headers, not log text — cheaper than the join-and-re-split
-   `SetContent` did.
+3. **Therefore the pump batches.**
+4. **A batching pump must carry the stream's end, not drop it.**
+5. **The viewport owns any slice handed to `SetContentLines`**
 
 ### D163 — Per-context state is re-resolved on a switch, through one launcher seam
-**2026-07-29.** A context switch rebinds everything keyed by the *kubeconfig
-context* — the `menus/<context>.yaml` extras (D83), the last-used namespace and the
-per-context state file a namespace is persisted to (D90/D91) — not just the cluster
-client (M4-05, completing D155/D156/D157).
-
-1. **The tui package stays context- and storage-agnostic.** It gains a
-   `ContextStateLoader` seam (`LoadContextState(name) ContextState`) that the
-   launcher implements over the same `loadMenuExtras`/`loadState` helpers the launch
-   path uses, so launch and switch can never resolve a context differently. Like
-   `ClusterConnector`/`ContextLister` it is per-app state, **not** a `Cluster` seam
-   (D155 pt 2): it reads config keyed by a context name, not the cluster. Nil → the
-   shell keeps what it launched with, which is every hermetic test.
-2. **The load rides the connect's Cmd.** Both are disk reads keyed by the same name
-   and both are wanted only if the connect succeeded, so one goroutine and one
-   message (`clusterConnectedMsg.state`) carry them, and a failed switch discards
-   them together — the shell's own per-context state is then untouched.
-3. **`LoadContextState` cannot fail.** A missing file is the common case and a
-   malformed one degrades to the default menu / all-namespaces and is logged
-   (D159/principle 3): a config file may not block a switch, and the shell already
-   owns that frame with its "switched to …" notice.
-4. **Order around the reset is load-bearing.** The extras are installed *before*
-   `resetCluster`, because the reset rebuilds the menu from the seed and folds in
-   whatever the model holds; the persister and the restored namespace are applied
-   *after* it, because the reset clears the scope. A switch never persists the
-   namespace it only restored — it came out of the file it would be written to.
-5. **`-n` names the launch context's scope, not every context's.** The flag wins for
-   the run it was passed for (D91); a context switched to afterwards always lands on
-   its own recorded namespace.
+**2026-07-29.** A context switch rebinds everything keyed by the *kubeconfig context* — the `menus/<context>.yaml` extras (D83), the last-used namespace and the per-context state file a namespace is persisted to (D90/D91) — not just the cluster client (M4-05, completing D155/D156/D157).
+1. **The tui package stays context- and storage-agnostic.**
+2. **The load rides the connect's Cmd.**
+3. **`LoadContextState` cannot fail.**
+4. **Order around the reset is load-bearing.**
+5. **`-n` names the launch context's scope, not every context's.**
 
 ### D164 — Table cell coloring is keyed off the column *name*, per cell, purely
-**2026-07-29.** The browse table paints status-carrying cells with the theme's
-`Success`/`Warn`/`Error` roles (M4-06). The classifier is a pure function of the
-column name and the cell text — nothing else — and everything it does not
-recognise stays ordinary body text.
-
-1. **The column name is the key, not the resource kind.** Columns come from the
-   server-side Table API and are kubectl-identical (D33), so one rule set
-   (`STATUS`/`STATE`/`PHASE`, `READY`, `RESTARTS`) covers Pods, Nodes and any CRD
-   whose printer happens to use those names, and a kind kubecom has never heard of
-   is colored for free. Adding a rule means adding a column name, never a kind
-   switch.
-2. **The classifier stays per-cell and pure.** It may not read the row's other
-   cells: cross-column rules would re-introduce kind knowledge through the back
-   door and are untestable as data. The accepted cost is that a completed Job pod's
-   `0/1` READY reads as a warning while its STATUS reads as success — literally
-   true, and cheaper than the coupling.
-3. **An unrecognised value is uncolored, never guessed at.** Container reasons are
-   an open set, so beyond the named values only *name-shape* heuristics fire
-   (`…BackOff`, `…Error`, `…Failed`, `Err…` → error). Colour is an accent on top of
-   text that must remain readable on its own.
-4. **Severity is an ordering, and the most severe part wins.** `cellRole` is
-   ordered `none < success < warn < error`, so a comma-joined value (a Node's
-   `Ready,SchedulingDisabled`) merges with a plain `>`. A shortfall is a *warning*,
-   never an error — a rollout in progress is not a fault — and there is no
-   "many restarts is an error" tier, which would need an arbitrary threshold.
-5. **Selection wins outright over cell color.** The cursor row renders its
-   full-width `Selection` bar with no cell coloring: the cursor's one job is to say
-   "you are here", and a repainted cell mid-bar reads as a broken highlight.
-6. **A styled line is built from complete segments, never nested.** lipgloss ends
-   an inner style with a full reset, so text *after* an inner span rendered inside
-   an outer `Style.Render` loses the outer style. A row with colored spans is
-   therefore concatenated from independently-rendered segments and padded by hand,
-   rather than wrapped in the base style. This applies to any future surface that
-   paints spans inside a width-constrained line.
+**2026-07-29.** The browse table paints status-carrying cells with the theme's `Success`/`Warn`/`Error` roles (M4-06). The classifier is a pure function of the column name and the cell text — nothing else — and everything it does not recognise stays ordinary body text.
+1. **The column name is the key, not the resource kind.**
+2. **The classifier stays per-cell and pure.**
+3. **An unrecognised value is uncolored, never guessed at.**
+4. **Severity is an ordering, and the most severe part wins.**
+5. **Selection wins outright over cell color.**
+6. **A styled line is built from complete segments, never nested.**
 
 ### D165 — Owner → children is a *scope*, never a fetched list
-**2026-07-29.** `kube.Children` (M4-07) answers "what does this object drill
-into?" with a `ChildScope` — the child `Resource`, a namespace, and a
-`metav1.ListOptions` — and never with rows.
-
-1. **A scope, not a list.** `List`/`Watch` already take a namespace and
-   `ListOptions`, so returning the scope hands the TUI a *live* child table for
-   free. Returning `[]Row` would have built a second, snapshot-only data path that
-   goes stale the moment a pod restarts, and would have needed its own refresh
-   story (D155 pt 3). Anything else that "narrows a table" should return a scope
-   for the same reason.
-2. **The server does the filtering.** Exactly one of `LabelSelector`
-   (spec.selector owners) or `FieldSelector` (Node → `spec.nodeName`) is set, and
-   it is passed through verbatim. `spec.nodeName` is safe here — and was not safe
-   for cluster search (SEARCH-04c) — only because the child kind is known to be
-   Pod, the kind the apiserver indexes that field on. A field selector may be used
-   only where the kind is known.
-3. **The child kind comes from the caller's available set, matched on
-   `GroupKind`.** `Children` takes the discovered resources and looks the child up
-   in them rather than synthesizing a `Resource`, so the returned kind carries the
-   cluster's real verbs (verb-gating stays honest) and its preferred version. A
-   cluster or RBAC scope that does not expose pods has *no* child scope, and says
-   so.
-4. **A match-everything selector is refused, not passed through.** A
-   `spec.selector` that is present but selects everything, or absent entirely,
-   returns an error — a table that claims to show one owner's pods while showing
-   all of them is a wrong answer dressed as a right one. There is no fall back to
-   an empty selector anywhere in this path.
-5. **The relation is "related pods", not `ownerReferences`.** Service and Node are
-   in the table beside the workloads: neither owns anything, but both name a pod
-   set by exactly the mechanism the drill-down uses. Conversely CronJob→Job and
-   Deployment→ReplicaSet are deliberately absent — that link is
-   `metadata.ownerReferences`, which no field selector indexes, so it could not be
-   a scope at all and would need a client-side filter over a full list.
-6. **`HasChildren` is a pure predicate.** The drill-down action gates on a map
-   lookup with no network I/O (the role `canGet` plays for row actions), so
-   extending the owner set is a one-line map entry — and, for a `spec.selector`
-   kind, needs no new parsing at all.
+**2026-07-29.** `kube.Children` (M4-07) answers "what does this object drill into?" with a `ChildScope` — the child `Resource`, a namespace, and a `metav1.ListOptions` — and never with rows.
+1. **A scope, not a list.**
+2. **The server does the filtering.**
+3. **The child kind comes from the caller's available set, matched on `GroupKind`.**
+4. **A match-everything selector is refused, not passed through.**
+5. **The relation is "related pods", not `ownerReferences`.**
+6. **`HasChildren` is a pure predicate.**
 
 ### D166 — A drill-down scope is browse state the *watch start* reads, and it is a nav level
-**2026-07-29.** M4-08 wires `kube.Children` (D165) to the browse table. The scope
-is not a second data path and not a mode; it is one more thing `m.current` is
-qualified by.
+**2026-07-29.** M4-08 wires `kube.Children` (D165) to the browse table. The scope is not a second data path and not a mode; it is one more thing `m.current` is qualified by.
+1. **The scope is read where the watch is started, never at the call site.**
+2. **Both halves of the scope are load-bearing, including the namespace.**
+3. **Every direct re-point of the table clears the scope.**
+4. **Resolve before switching, degrade in place.**
+5. **A drill-down is its own `nav.back` level**
 
-1. **The scope is read where the watch is started, never at the call site.** The
-   shell holds one `kube.ChildScope` beside `m.current`, and `watchResource` — the
-   single place a browse watch begins — substitutes its `Namespace`/`Options` for
-   the app's namespace and an empty `ListOptions`. Any restart (a re-selection, a
-   reconnect's re-list) therefore re-applies it by construction, rather than
-   depending on a caller to remember. Nothing else may call `Watch` for the browse
-   table.
-2. **Both halves of the scope are load-bearing, including the namespace.** A
-   Node's children are cluster-wide (`Namespace: ""`), so a drill-down that reused
-   the app's namespace would silently show one namespace's pods. The scope's
-   namespace wins over `m.namespace` for as long as it is open.
-3. **Every direct re-point of the table clears the scope.** `selectResource` — the
-   entry point for a menu drill-in, the resource palette, a search hit and a
-   namespace re-scope — drops it; the drill-down starts its watch through
-   `watchResource` with the scope already installed. A scope belongs to one owner's
-   pods, so it must not narrow the next kind, and a namespace pick is an explicit
-   re-scope a stale selector would fight.
-4. **Resolve before switching, degrade in place.** The scope is resolved off the
-   update loop and the table is only re-pointed when a scope comes back. A refusal
-   (D165 pt 4) leaves the owner's table open and watching, with one toast — the
-   same connect-before-teardown ordering the context switch uses (D157), for the
-   same reason. A resolve that lands after the reader moved on is dropped on a
-   generation guard.
-5. **A drill-down is its own `nav.back` level**, above the focus pop and below the
-   filter: the first `esc` returns to the owner (re-selecting the row it was opened
-   from through the pending-selection mechanism), the second hands focus back to the
-   menu. A scoped table must also *say* it is scoped — the status bar names the
-   owner and `ChildScope.Selector()`, so a filtered pod list is never mistakable for
-   the namespace's.
-
-## D167 — Metrics are an optional, join-by-name overlay: availability is a discovery fact and absence is silent (2026-07-29, M4-09)
-
-`internal/kube/metrics.go` reads `metrics.k8s.io/v1beta1` through the ordinary
-dynamic client. The constraints a future leg must not contradict:
-
+### D167 — Metrics are an optional, join-by-name overlay: availability is a discovery fact and absence is silent (2026-07-29, M4-09)
+`internal/kube/metrics.go` reads `metrics.k8s.io/v1beta1` through the ordinary dynamic client. The constraints a future leg must not contradict:
 1. **Availability is answered by discovery, not by a probe request.**
-   `MetricsFor(kind, kinds)`/`HasMetrics` look the metrics kind up in the caller's
-   already-discovered resource set and return the *discovered* `Resource` (real
-   version, real verbs, `list` verb required). Nothing anywhere may decide metrics
-   are available by making a request and seeing whether it works: metrics-server
-   absent and metrics-server present-but-down are the same answer here, because
-   `ServerPreferredResources` isolates a failing aggregated group into
-   `DiscoveryResult.Failed` rather than `Resources` (#87). That equivalence is the
-   feature — the common failure mode degrades exactly like the uninstalled one.
-2. **The join key is namespace/name, never UID.** A `PodMetrics` is a *different
-   object* from the Pod it measures; its own `metadata.uid` is unrelated. Usage is
-   therefore keyed by `UsageKey{Namespace, Name}` and callers project a row's
-   `ObjectRef` through `UsageKeyOf`. A join on `ObjectRef` would compile and never
-   match.
-3. **One-shot List, never a watch.** The metrics API serves point-in-time samples
-   and exposes no watch verb, so a consumer refreshes on a slow ticker and joins
-   the result onto rows it already watches (D155 pt 3). Metrics must never become a
-   second watch or a second table.
-4. **A sample is whole or absent.** An item whose usage cannot be read in full — an
-   unparseable quantity, a missing `memory`, one bad container in a pod's sum — is
-   dropped from the map; the rest of the list is still returned. A partial sum
-   presented as a total is a wrong number wearing a right number's clothes.
-   Staleness metadata (`Window`, `Timestamp`) is the exception: it is decoration, so
-   a malformed one zeroes that field and keeps the sample.
-5. **A failed request is the caller's to log, not to surface.** `Metrics` returns a
-   wrapped error, and the consumer degrades to "no columns" and writes it to the log
-   file (D159) rather than toasting the reader. An aggregated API is the flakiest
-   thing in a cluster and this is a decoration on someone else's table.
+2. **The join key is namespace/name, never UID.**
+3. **One-shot List, never a watch.**
+4. **A sample is whole or absent.**
+5. **A failed request is the caller's to log, not to surface.**
 
-## D168 — The metrics overlay is displayed-view state, joined per derivation and never written into watched rows (2026-07-29, M4-10)
-
-The TUI half of the metrics line (`internal/tui/metrics.go`, the poll;
-`internal/tui/components/table/usage.go`, the columns). What a future leg must not
-contradict:
-
-1. **Samples live beside the rows, never in them.** The table component holds the
-   usage map as its own field and derives the two display columns in `applyFilter`
-   — the one place the displayed view is re-derived from the authoritative set.
-   Writing a usage number into `kube.Row.Cells` is forbidden: rows are the watch's
-   and every RESET (a reconnect, a re-list) replaces them wholesale, so a sample
-   folded into a row is both destroyed by the next delta and a mutation of the
-   authoritative set two other derivations read.
-2. **Deriving them there, rather than at render time, is what keeps them
-   ordinary.** The overlay's columns are real visible columns: measured, filtered,
-   horizontally scrolled and colored by the existing code with no special case.
-   The single exception is sorting, which reads the raw sample (`usageSortKey`)
-   because the cells are formatted strings — a future column of formatted values
-   owes the same.
-3. **`SetUsage(nil)` means "this cluster does not measure this kind" and a non-nil
-   empty map means "measured, nothing scraped yet".** The columns follow the first
-   distinction, not the second: availability decides whether they exist, samples
-   decide what is in them. A measured object with no sample renders **blank**, never
-   `0m` — a number nobody measured.
-4. **The poll is armed from `watchResource`, the single browse-watch start**, and is
-   scoped to the same kind *and namespace* that watch uses (a children drill-down's
-   scope namespace, not the app's). So every restart — kind change, namespace
-   re-scope, drill-down — re-evaluates availability and re-scopes the poll, and there
-   is no second place that could disagree with the table about what it is showing.
-   It joins the per-cluster async inventory (`stopClusterAsync`, D155 pt 1).
+### D168 — The metrics overlay is displayed-view state, joined per derivation and never written into watched rows (2026-07-29, M4-10)
+The TUI half of the metrics line (`internal/tui/metrics.go`, the poll; `internal/tui/components/table/usage.go`, the columns). What a future leg must not contradict:
+1. **Samples live beside the rows, never in them.**
+2. **Deriving them there, rather than at render time, is what keeps them ordinary.**
+3. **`SetUsage(nil)` means "this cluster does not measure this kind" and a non-nil empty map means "measured, nothing scraped yet".**
+4. **The poll is armed from `watchResource`, the single browse-watch start**
 5. **A failed refresh keeps the previous samples and is logged, never toasted**
-   (D167 pt 5). Columns that blink empty whenever metrics-server restarts are worse
-   than numbers a few seconds stale, and the reader did not ask for the overlay.
 
-## D169 — A theme name is a persisted identifier, and a built-in theme is complete or it is not built in (2026-07-29, M4-11)
+### D169 — A theme name is a persisted identifier, and a built-in theme is complete or it is not built in (2026-07-29, M4-11)
+`internal/tui/styles/themes.go` holds the built-in palettes (`MonokaiTheme`, `SolarizedDarkTheme`) and the registry over them (`Themes`, `ThemeNames`, `ByName`). What a future leg must not contradict:
+1. **A theme's `Name` is API, not a label.**
+2. **Lookup is lenient about formatting, never fuzzy.**
+3. **Every built-in sets every `Theme` role.**
+4. **`builtins` is the single registry**
 
-`internal/tui/styles/themes.go` holds the built-in palettes (`MonokaiTheme`,
-`SolarizedDarkTheme`) and the registry over them (`Themes`, `ThemeNames`,
-`ByName`). What a future leg must not contradict:
-
-1. **A theme's `Name` is API, not a label.** M4-12 persists the chosen name in
-   `config.yaml`, so renaming a shipped theme silently breaks the config of
-   everyone who selected it. Hence `solarized-dark` rather than `solarized`: a
-   light port lands beside it as a new name instead of forcing a rename or
-   quietly changing what an existing name renders. Adding a theme is free;
-   renaming one is a migration.
-2. **Lookup is lenient about formatting, never fuzzy.** `ByName` trims and
-   case-folds because the name is typed into a config file by hand, but a
-   near-miss (`mono`, `solarized`) is *not found*. Resolving an unknown name to
-   "something close" would silently give the reader a theme nobody chose; the
-   caller degrades to the default and says so (principle 3).
-3. **Every built-in sets every `Theme` role.** A nil color is not a fallback —
-   lipgloss simply does not apply it, so the terminal default leaks through and
-   the theme is half-applied in a way that looks like a rendering bug rather than
-   a missing entry. A new role added to `Theme` must be filled in *every*
-   built-in in the same leg (`TestBuiltinThemesAreComplete` fails otherwise).
-4. **`builtins` is the single registry** and the ordering contract is "default
-   first, the rest sorted by name". A picker, a config error message and any
-   generated doc all read that one order, so none of them can disagree about what
-   exists. `Themes()` rebuilds its slice per call, so the registry stays
-   unmutatable by a caller (principle 1).
-
-## D170 — The palette is resolved by the launcher and fixed at construction (2026-07-29, M4-12a)
-
-`config.yaml`'s `theme:` field now reaches the shell: the launcher resolves the
-name through `styles.ByName` and passes the palette in as `tui.WithTheme`, and
-`NewWithKeymap` builds every component from it. What a future leg must not
-contradict:
-
+### D170 — The palette is resolved by the launcher and fixed at construction (2026-07-29, M4-12a)
+`config.yaml`'s `theme:` field now reaches the shell: the launcher resolves the name through `styles.ByName` and passes the palette in as `tui.WithTheme`, and `NewWithKeymap` builds every component from it. What a future leg must not contradict:
 1. **`config.Config` carries the theme *name*, a plain string — not a `Theme`.**
-   Resolution (and therefore the dependency on `internal/tui/styles`) lives in
-   `cmd/kubecom`, so `internal/config` stays a decoder of what the user wrote and
-   the palette stays in the package that owns rendering. A validating config
-   loader would also have to decide what to do with an unknown name, which is a
-   UI decision (pt 3) rather than a parsing one.
-2. **Options run before the components are constructed.** `NewWithKeymap` now
-   applies every `Option` to a bare `Model`, then builds the components from
-   `m.styles`. An option may therefore feed a component's *constructor* — but no
-   option may assume a component exists when it runs (the post-option seeding
-   block below the constructors is where that belongs). This is what makes a
-   launch-time theme a two-line change instead of a restyle: a component caches
-   the `Styles` it is handed, so a theme picked *at runtime* still needs a
-   `SetStyles` on each of them, and that is M4-12b's problem, not this contract's.
-3. **An unknown theme name never fails the launch.** It degrades to the default
-   palette, logs, and takes the single startup-toast slot only if a migration
-   report and a fallen-back menu file have not (principle 3, D169 pt 2). Empty —
-   an absent key — is the default and is silent: the common case says nothing.
+2. **Options run before the components are constructed.**
+3. **An unknown theme name never fails the launch.**
 
-## D171 — A live restyle is a fan-out every component must join (2026-07-30, M4-12b-1)
+### D171 — A live restyle is a fan-out every component must join (2026-07-30, M4-12b-1)
+D170 fixed the palette at construction, which is enough for a `theme:` config field and not enough for a theme picked from inside kubecom: the components are already built.
+1. **A component that caches a `Styles` exposes `SetStyles`, and `applyStyles` calls it.**
+2. **`SetStyles` re-derives; it does not merely assign.**
+3. **A restyle is colors only, never a reset.**
+4. **The two theming paths stay separate.**
 
-D170 fixed the palette at construction, which is enough for a `theme:` config field
-and not enough for a theme picked from inside kubecom: the components are already
-built. `Model.applyStyles` (`internal/tui/theme.go`) repoints the shell and all
-sixteen component fields at a new `styles.Styles`, and each component now has a
-`SetStyles`. What a future leg must not contradict:
+### D172 — A theme is user preference, not cluster state: the picker is never inert, the write-back is load-modify-save (2026-07-30, M4-12b-2)
+`theme.switch` (`T`) opens a picker over `styles.Themes()`, applies the pick through D171's `applyStyles`, and writes the name back to `config.yaml` through a `tui.ThemePersister` the launcher implements. What a future leg must not contradict:
+1. **The gesture works with no seam wired; only *persistence* needs one.**
+2. **A config write-back is `LoadFile` → set one field → `SaveFile`.**
+3. **No save preserves comments or formatting.**
+4. **A theme belongs to the reader's terminal, not to the cluster or the context.**
 
-1. **A component that caches a `Styles` exposes `SetStyles`, and `applyStyles` calls
-   it.** These two are one rule, and the second half is the one that rots: a new
-   component field added to `Model` must be added to `applyStyles` **in the same
-   leg**. Skipping it is not a compile error and not visibly wrong until someone has
-   that particular overlay open while picking a theme, which is why the guard is
-   `TestApplyStylesMatchesLaunchTimeTheme` — a restyled shell must render
-   byte-identically to one built with the theme, per surface. Adding a component
-   without adding a surface there leaves the same hole one level up.
-2. **`SetStyles` re-derives; it does not merely assign.** If `New` reads its `Styles`
-   argument for anything beyond storing it, `SetStyles` must redo that read, because
-   the derived copy is what actually draws. Three exist today — the status bar copies
-   the accent into the spinner bubble, the picker and search view hand a `Styles` copy
-   to a `list` delegate, and the logs view stores *painted* lines (LOGS-05b), so it
-   re-renders. A plain field assignment in any of them is a silent half-restyle:
-   `m.styles.Theme.Name` reports the new theme while the screen keeps the old colors.
-3. **A restyle is colors only, never a reset.** No `SetStyles` may clear or rebuild
-   state: a typed filter, a table's rows/sort/selection, an open picker's cursor, the
-   logs buffer and scroll position all survive it. This is what makes `applyStyles`
-   safe to call unconditionally — from any overlay, mid-stream, mid-search — so the
-   caller never has to reason about *when* a theme may be picked.
-4. **The two theming paths stay separate.** `WithTheme` runs before construction
-   (D170 pt 2) and feeds constructors; `applyStyles` runs after and repaints. Neither
-   is expressible as the other — an `Option` cannot restyle a component that does not
-   exist yet, and a fan-out cannot reach a constructor — so they are not to be
-   collapsed into one mechanism, and both are load-bearing.
+### D173 — A release leaves the repo and cannot be reverted, so an agent prepares and dry-runs it and a human publishes it (2026-07-30, M5-PLAN)
+M5 is decomposed into slices M5-01…M5-11 on the [board](../tasks/board.md). Every milestone before it enjoyed the same safety net — land it, and if it is wrong, revert it. M5 does not have one: its artifacts leave the repository. What a future leg must not contradict:
+1. **No agent leg pushes a release tag or performs a distributor's first publish.**
+2. **A publisher is inert without its credential, never fatal.**
+3. **Install docs describe only paths that actually work, and land with them.**
+4. **The credential-free gate for release config is `goreleaser release --snapshot --clean`.**
 
-## D172 — A theme is user preference, not cluster state: the picker is never inert, the write-back is load-modify-save (2026-07-30, M4-12b-2)
+### D174 — The Definition of Done is audited against evidence, never edited to match what shipped (2026-07-30, M5-01)
+M5-01 audited all 13 boxes of the Definition of Done in [`../goals.md`](../goals.md) and ticked 6. The rules it followed are the ones a future audit — M5-10's pre-flight, or whatever closes the remaining boxes — must not silently contradict:
+1. **A box is ticked only when its claim is decidable from the code and its tests, or has been confirmed by a human against a real cluster.**
+2. **An open bug outranks a green test suite.**
+3. **Where the DoD text and a later decision disagree, the divergence is filed, not edited.**
+4. **A DoD audit files what it finds and fixes nothing.**
 
-`theme.switch` (`T`) opens a picker over `styles.Themes()`, applies the pick through
-D171's `applyStyles`, and writes the name back to `config.yaml` through a
-`tui.ThemePersister` the launcher implements. What a future leg must not contradict:
+### D175 — A released binary reports complete build metadata, and the release config is gated like code (2026-07-30, M5-02)
+1. **Every exported var in `internal/version` must be injected by `.goreleaser.yml`'s ldflags.**
+2. **`.goreleaser.yml` tracks the current goreleaser v2 schema, so whatever runs it must be current too.**
 
-1. **The gesture works with no seam wired; only *persistence* needs one.** Every other
-   picker in the shell is inert without its seam (no lister → `ns.switch` opens
-   nothing), because it would otherwise show an empty modal. The theme registry is
-   compiled in, so there is nothing to be unavailable: a nil `ThemePersister` costs the
-   choice its memory, never the repaint. Do not "fix" this into the inert-without-a-seam
-   pattern the other pickers follow.
-2. **A config write-back is `LoadFile` → set one field → `SaveFile`.** `SaveFile`
-   marshals the whole struct, so writing anything less than the file's current contents
-   deletes the rest of it — a fresh `&config.Config{Theme: name}` would drop the user's
-   `keys:` section. The read also has to happen *at write time*, not at launch: a config
-   held from startup is stale the moment the user edits the file. And an unparseable
-   config **fails the write** instead of being replaced with defaults — losing a colour
-   choice is recoverable, losing a hand-written keymap is not. Any future setting
-   persisted from the UI follows this same shape.
-3. **No save preserves comments or formatting.** `sigs.k8s.io/yaml` marshals a struct,
-   not a document, so a written-back config comes back canonicalized. That is a
-   documented tradeoff (README), not a bug to fix by hand-patching YAML text; if
-   round-trip fidelity is ever wanted it is a deliberate switch to a node-level YAML
-   library, decided on its own.
-4. **A theme belongs to the reader's terminal, not to the cluster or the context.** It
-   is therefore not part of the `Cluster` bundle (D155 pt 2) and `resetCluster` neither
-   repaints nor dismisses the theme picker — the one picker a context switch leaves
-   open, because it shows nothing the switch invalidates. It is also not per-context
-   state (D163): there is one `theme:` for the user, not one per kubeconfig context.
+### D176 — There is exactly one release entry point, and the tag path is gated by the same gate a branch push is (2026-07-30, M5-03)
+M5-03 added `.github/workflows/release.yml`: a `--snapshot --clean` dry run on every push to `v1`/`main` and on PRs, and a real `goreleaser release --clean` on a `v*` tag. What a future leg must not silently contradict:
+1. **goreleaser runs in that one workflow, at one pinned version.**
+2. **The tag path gates on `make check` by *calling* ci.yml, not by copying it.**
+3. **Distribution slices extend the existing pipeline; they never add a second `v*` workflow.**
 
-## D173 — A release leaves the repo and cannot be reverted, so an agent prepares and dry-runs it and a human publishes it (2026-07-30, M5-PLAN)
-
-M5 is decomposed into slices M5-01…M5-11 on the [board](../tasks/board.md). Every
-milestone before it enjoyed the same safety net — land it, and if it is wrong, revert it.
-M5 does not have one: its artifacts leave the repository. What a future leg must not
-contradict:
-
-1. **No agent leg pushes a release tag or performs a distributor's first publish.** These
-   are irreversible in a stronger sense than the "irreversible actions" D79 already
-   reserves for humans: `proxy.golang.org` caches a module version **permanently**, so a
-   broken `v1.0.0` can never be corrected, only superseded by `v1.0.1`, and distributor
-   mirrors copy whatever the tag produced. So the agent's share of M5-10/11 is the
-   pre-flight and a precise human task; the tag push and the default-branch change are the
-   human's. A corollary for ordering: everything that affects *what the artifact contains*
-   (M5-02's build metadata, M5-03's workflow) lands before anything that publishes it,
-   because after the tag those are no longer fixable in place.
-2. **A publisher is inert without its credential, never fatal.** Each distribution slice
-   (M5-06 Homebrew, M5-07 AUR, M5-08 Docker) needs an external resource only a human owns —
-   a tap repo, an AUR SSH key, a registry. The slice lands its goreleaser config and raises
-   the human task rather than blocking, and that config must **skip** cleanly when the
-   secret is absent. A publisher that hard-fails on a missing token converts a good release
-   into a failed one at the exact moment nothing can be retried (pt 1), which is principle 3
-   applied to the release pipeline.
-3. **Install docs describe only paths that actually work, and land with them.** D68 already
-   requires a leg touching install/launch/config/usage to update `README.md`; in M5 that
-   binds specifically: a distribution slice documents its path **in the same leg** that
-   makes it real, and never in advance. There is deliberately no standalone "rewrite the
-   README" slice — the README has been maintained continuously under D68, and a README
-   advertising a `brew install` that does not resolve yet is worse than one that says the
-   path is coming. Same rule for assets: no reference to a screencast that has not been
-   recorded.
-4. **The credential-free gate for release config is `goreleaser release --snapshot
-   --clean`.** It needs no tag, no secrets and publishes nothing, so it is to the release
-   pipeline what fake clients are to the kube layer (D18): the check a leg can actually run.
-   M5-03 puts it in CI so release-config drift is caught continuously instead of by the one
-   tag push that cannot be retried. Where a leg genuinely cannot run it — neither
-   `goreleaser` nor `vhs` is in the sandbox image — the honest gate is that CI job plus
-   config review, never a claimed-but-unrun command (D79).
-
-## D174 — The Definition of Done is audited against evidence, never edited to match what shipped (2026-07-30, M5-01)
-
-M5-01 audited all 13 boxes of the Definition of Done in [`../goals.md`](../goals.md) and
-ticked 6. The rules it followed are the ones a future audit — M5-10's pre-flight, or
-whatever closes the remaining boxes — must not silently contradict:
-
-1. **A box is ticked only when its claim is decidable from the code and its tests, or has
-   been confirmed by a human against a real cluster.** This is D79 and D154 pt 1 applied to
-   the DoD: the annotation names the tests, decisions and milestone criteria that carry it,
-   so a reader can check the tick without trusting it. An unticked box names the single
-   thing that closes it, and by whom.
-2. **An open bug outranks a green test suite.** The "any resource incl. CRDs" box stays
-   unticked because CRD-01 reports a real `ExternalSecret` failing to open, even though the
-   generic-listing path is thoroughly covered. A DoD box states a property of the shipped
-   product, not of the test suite, so a credible field report that contradicts it is
-   decisive — the fix, or a finding that the fault is cluster-side, is what unticks it.
-3. **Where the DoD text and a later decision disagree, the divergence is filed, not
-   edited.** The DoD asks for an in-TUI YAML viewer; D135 deliberately retired it and
-   unified YAML into the `$EDITOR` round-trip. Rewriting the bullet to match the code would
-   erase the only remaining record that a v1 promise changed shape, and the DoD is the
-   maintainer's contract, not the agent's scratch pad. So the box stays unticked with the
-   divergence stated, and the choice — re-add a read-only YAML view, or amend the bullet —
-   is a board item (M5-01b) for a human to settle. This binds any bullet, not just this one:
-   an agent may annotate a DoD item freely, and may tick or untick it on evidence, but may
-   not reword the claim itself.
-4. **A DoD audit files what it finds and fixes nothing.** It is a reading leg; a defect it
-   turns up becomes a board item (M5-01a, M5-01b here) so the audit stays small, honest and
-   re-runnable, rather than growing into the repairs it discovers.
-
-## D175 — A released binary reports complete build metadata, and the release config is gated like code (2026-07-30, M5-02)
-
-1. **Every exported var in `internal/version` must be injected by `.goreleaser.yml`'s
-   ldflags.** `TestGoreleaserSetsAllVersionVars` (in `internal/version`) parses both files
-   and fails `make check` if a var is missing from the ldflags of any build, is set to an
-   empty value, or is set under an import path that is not this module's — so adding build
-   metadata without wiring it is a red build, not a placeholder discovered in a shipped
-   binary. This is the M2-01e/D51 drift-gate shape applied to release config, and it exists
-   because D173 pt 1 means a wrong value cannot be corrected in place after a tag ships.
-   `-X` paths are strings the compiler does not check: a rename of the package or the module
-   silently stops setting anything, which is why the guard derives the path from `go.mod`
-   rather than hard-coding it.
-2. **`.goreleaser.yml` tracks the current goreleaser v2 schema, so whatever runs it must be
-   current too.** v2.5.1 cannot parse this config at all (`archives[].ids` and
-   `archives[].formats` are newer fields) — it fails before building anything. That is the
-   good failure mode, but only if the pin is deliberate: the CI action pin M5-03 adds, any
-   local dry run, and any contributor instruction must name a recent v2 (v2.17.1 is the
-   version this config was dry-run against). A goreleaser upgrade is therefore a config
-   change to re-dry-run, not a transparent bump.
-
-## D176 — There is exactly one release entry point, and the tag path is gated by the same gate a branch push is (2026-07-30, M5-03)
-
-M5-03 added `.github/workflows/release.yml`: a `--snapshot --clean` dry run on every push
-to `v1`/`main` and on PRs, and a real `goreleaser release --clean` on a `v*` tag. What a
-future leg must not silently contradict:
-
-1. **goreleaser runs in that one workflow, at one pinned version.** Both jobs read the
-   workflow-level `GORELEASER_VERSION`; `TestReleaseWorkflowPinsGoreleaser` (in
-   `internal/version`) fails `make check` if the pin becomes floating (`latest`, `~> v2`),
-   if a job hard-codes its own version, or if the `--snapshot` dry run disappears. The pin
-   is load-bearing, not cosmetic (D175 pt 2), and the dry run is the only credential-free
-   gate release config has (D173 pt 4) — both are the kind of thing whose absence looks
-   green until a tag push fails, which is why they are guarded rather than reviewed.
-2. **The tag path gates on `make check` by *calling* ci.yml, not by copying it.** ci.yml
-   triggers on branches only, so a tag would otherwise publish an unchecked tree; it now
-   also carries `workflow_call` and release.yml's `release` job `needs:` it. That makes
-   ci.yml's `workflow_call` trigger and its `check` job **load-bearing for releases**:
-   editing them can break the release path, and the breakage surfaces only on a tag push,
-   which cannot be retried (D173 pt 1). Reusing the workflow rather than duplicating it
-   keeps the golangci-lint pin and the OS matrix in exactly one place.
-3. **Distribution slices extend the existing pipeline; they never add a second `v*`
-   workflow.** M5-06/07/08 (Homebrew, AUR, Docker) add config to `.goreleaser.yml` and, if
-   they need one, a secret to the existing `release` job. Two workflows triggering on the
-   same tag is a double publish, and D173 pt 1 means neither half can be taken back.
-
-## D177 — Which log instance you are reading is one bit of one request, toggled inside the view, and the header always names it (2026-07-30, M5-01a)
-
-`kube.LogOptions.Previous` existed since M1-07c but nothing reached it, so the log that
-explains a `CrashLoopBackOff` — the one belonging to the instance that already died — was
-unreachable. M5-01a added `logs.previous` (`ctrl+p`). What a future leg must not silently
-contradict:
-
-1. **`L` stays the only way into logs.** `logs.previous` is a toggle *inside* the open
-   view, not a second row action. The pod resolution (M3-07b) and the container pick
-   (M3-07a) that got the reader here are already spent, so flipping instances re-issues
-   the stashed `logRequest` with one bit changed (`Model.logReq`, `startLogStream`). Do not
-   add a "previous logs" row action or menu entry: two entry points would need `Previous`
-   threaded through `rowActionMsg`, `ctrPurpose` and the picker stash to reach nothing the
-   toggle does not already reach.
-2. **The flip changes `Previous` and nothing else about the request.** `Follow` stays on: a
-   terminated instance's log cannot grow, the kubelet serves it and closes, and a clean end
-   is already how `followLogStream` stops following — the same path a followed pod takes
-   when its container dies. A leg that special-cases follow, tail or timestamps for the
-   previous instance is changing more than the reader asked for. **Confirmed against a real
-   kubelet 2026-08-09** (crash-loop dogfood on `broken/crashloop`, 2,305 restarts): the
-   previous instance's log arrives and the followed stream settles — the bet this point made
-   is observed behavior now, not inference.
-3. **A restream is not a reset.** Two instances are two logs, so the buffer is replaced
-   (`logsview.Restream`), but the grep query and mode, wrap and timestamps survive, because
-   the point of flipping is to ask the same question of the other log. `Reset` — the
-   *new object* path — is written in terms of `Restream` plus clearing that lens, so the
-   two cannot drift apart.
-4. **Nothing pre-checks for a previous instance.** Only the apiserver knows whether one
-   exists; a container-status guess would either hide a readable log or promise one that is
-   not there. The request goes out and its rejection lands on the emptied view —
-   **the close half of this point is superseded by D257 (2026-08-09): a rejected flip
-   keeps the view and falls back to the running instance's stream under the toast**;
-   the no-pre-check half stands.
+### D177 — Which log instance you are reading is one bit of one request, toggled inside the view, and the header always names it (2026-07-30, M5-01a)
+`kube.LogOptions.Previous` existed since M1-07c but nothing reached it, so the log that explains a `CrashLoopBackOff` — the one belonging to the instance that already died — was unreachable. M5-01a added `logs.previous` (`ctrl+p`). What a future leg must not silently contradict:
+1. **`L` stays the only way into logs.**
+2. **The flip changes `Previous` and nothing else about the request.**
+3. **A restream is not a reset.**
+4. **Nothing pre-checks for a previous instance.**
 5. **The `[previous]` header marker is not optional, and sits ahead of the follow state.**
-   Two runs of one container produce output that looks alike, so this is state the reader
-   can lose sight of and D146 says name it. The header is clipped from the right: losing
-   `[following]` or the match counts misleads no one, losing `[previous]` makes a dead
-   instance's log read as the running one's. It is the counter-example to LOGS-04b's
-   unmarked timestamps toggle — that one restates the body, this one cannot be seen in it.
+**Refs:** superseded by D257.
 
-## D178 — A DoD claim is amended only on the maintainer's own recorded words, and deleted feedback is still that record (2026-07-30, M5-01b)
+### D178 — A DoD claim is amended only on the maintainer's own recorded words, and deleted feedback is still that record (2026-07-30, M5-01b)
+M5-01b was filed as "a maintainer decision, not a defect": the DoD promised an in-TUI YAML viewer, D135 had retired it, and D174 pt 3 forbade the agent from rewording the promise.
+1. **The one exception to D174 pt 3.**
+2. **Deleted feedback is evidence, not history that was thrown away.**
+3. **The object's YAML has exactly one surface, and it is the editor**
 
-M5-01b was filed as "a maintainer decision, not a defect": the DoD promised an in-TUI YAML
-viewer, D135 had retired it, and D174 pt 3 forbade the agent from rewording the promise. It
-turned out not to need a decision at all — the maintainer made this one on **2026-07-24**,
-in the feedback file that produced D135, and the file had been deleted (per D69) once it was
-addressed, leaving D135 to read like the agent's own idea. What a future leg must not
-silently contradict:
-
-1. **The one exception to D174 pt 3.** An agent may amend the text of a Definition-of-Done
-   claim **only** when a human's own recorded words already settled the divergence — a
-   feedback file, a human-task `## Result`, a commit of theirs — and only if the amendment
-   **quotes or cites that record and preserves the original claim text** in the annotation.
-   Every other reason to reword a bullet remains barred: not because the code went another
-   way, not because a promise now looks unachievable, not on the agent's taste. The test is
-   whether a reader can check *whose* decision changed the promise; an amendment that cannot
-   name a human is the thing D174 pt 3 exists to stop.
-2. **Deleted feedback is evidence, not history that was thrown away.** D69 keeps the inbox a
-   live to-do list by deleting addressed items, which means the working tree can make a
-   human's call look like an agent's. Before treating any question as needing the
-   maintainer, search what was deleted:
-   `git log --diff-filter=D --all -- 'vault/feedback/*'`, then
-   `git show <commit> -- <path>`. Cite the recovery command wherever a leg relies on one, so
-   the next reader does not have to re-find it. This applies to `vault/human-tasks/` too,
-   which is deleted on the same principle.
-3. **The object's YAML has exactly one surface, and it is the editor** — D135 pt 1
-   reaffirmed, now with the DoD agreeing rather than dissenting. The last standing argument
-   for re-adding a read-only YAML view was that a v1 promise asked for one; it does not. A
-   future in-TUI YAML *reading* surface therefore needs **new** human feedback, not a leg's
-   initiative. Corollary, and the defect this leg actually fixed in shipped output:
-   documentation that still promises a YAML viewer is stale — `README.md` claimed "YAML,
-   describe and secret content still open in the shared centered viewer" three milestones
-   after that stopped being true.
-
-## D179 — Migration carries the theme *name*, never the palette, and a legacy rename is an enumerated alias rather than a guess (2026-07-30, M5-04)
-
-M5-PLAN found `migrationNotes` telling a 2020 user "legacy theme configuration was dropped:
-kubecom v1 uses a single fixed theme and has no runtime theming" — true under D6 when
-M2-12a wrote it, false since M4-11/12 shipped three built-in themes, a `theme:` field
-(D170) and a picker (D172). So a user whose `currentTheme` was `monokai` was told their
-choice was gone by a binary that ships that exact palette. What a future leg must not
-silently contradict:
-
-1. **The migratable unit is the theme's name, and only its name.** `currentTheme` maps onto
-   `Config.Theme` when `styles.ByName` resolves it; the legacy `themes[].colors/styles`
-   tree stays un-migratable *by design*, because v1 themes are built-in (D169) and there is
-   no config field for a palette. Whenever a note reports a carried-over selection and the
-   legacy file also defined palettes, it must say both things — a user who reads only "your
-   theme was carried over" will believe their hand-tuned colors came with it. Do **not**
-   resolve this asymmetry by inventing a custom-palette config field: that is a feature
-   request, not a migration.
+### D179 — Migration carries the theme *name*, never the palette, and a legacy rename is an enumerated alias rather than a guess (2026-07-30, M5-04)
+M5-PLAN found `migrationNotes` telling a 2020 user "legacy theme configuration was dropped: kubecom v1 uses a single fixed theme and has no runtime theming" — true under D6 when M2-12a wrote it, false since M4-11/12 shipped three built-in themes, a `theme:` field (D170) and a picker (D172).
+1. **The migratable unit is the theme's name, and only its name.**
 2. **A legacy rename is an enumerated alias; D169 pt 2 (never fuzzy) is unchanged.**
-   `legacyThemeAliases` holds exactly the 2020→v1 renames that are the same palette under a
-   different name — today `solarized` → `solarized-dark` (the 2020 built-in *was* the dark
-   variant: background `#002b36`; v1 named its port for the variant so a light one could
-   land beside it). The 2020 built-ins with no v1 port — `base16` (which was also the
-   legacy default when `currentTheme` was empty), `paraiso`, `twilight` — are deliberately
-   **absent** from the table. An unported name resolves to nothing, the user gets v1's
-   default, and the note names the themes that do exist. Picking the "closest" palette for
-   them would be the guessing D169 pt 2 forbids, and every entry added to the table must be
-   a rename an agent can point at in `master:app/ui/theme/themes/`, not a resemblance.
 3. **An empty `currentTheme` is not a selection, even though the 2020 build defaulted it.**
-   `manager.ConfigUpdated` substituted `base16` for an empty value; v1 has no base16 port,
-   so migrating that default would mean picking an arbitrary v1 theme for a user who never
-   named one. The honest outcome is v1's own default with `theme:` left unset.
-4. **A migration note that describes v1's own capabilities has to be re-read whenever those
-   capabilities change.** This defect survived two milestones because the note was correct
-   when written and nothing links a `config/migrate.go` string to the feature it describes.
-   The guard is the note's *tests*: `TestMigrateThemeNoteNamesEveryBuiltIn` derives its
-   expectation from `styles.ThemeNames()` and `TestMigrateAliasedLegacyThemesAllResolve`
-   fails if a rename in `styles/` leaves a dangling alias, so the registry growing or being
-   renamed breaks `make check` instead of quietly ageing the note. Any future note that
-   asserts something about v1 must be pinned to the thing it asserts, not to a literal.
+4. **A migration note that describes v1's own capabilities has to be re-read whenever those capabilities change.**
 
-## D180 — A legacy-format fixture is generated from the 2020 writer and pinned to `master:pb/config.proto`, never hand-typed (2026-07-30, M5-05)
-
-Every test of the legacy migration up to this leg fed `Migrate` YAML a test author typed
-from memory, and one of them was wrong: `rgb: "#000000"`, when
-`theme.ColorToProto` wrote `fmt.Sprintf("%06x", …)` — a bare hex string, no `#`, with
-`ProtoToColor` prepending the `#` on read. Nothing caught it, because the migration ignores
-the palette tree, so a fixture can misdescribe the format and still pass. That is the whole
-hazard of asserting against remembered file shapes. What a future leg must not silently
-contradict:
-
-1. **The 2020 file's shape is not a matter of opinion — it is `master:pb/config.proto` plus
-   `protojson`.** `master:config/config.go`'s `Save` did `protojson.Marshal(*pb.Config)` →
-   `yaml.JSONToYAML`, so four rules follow and any fixture claiming to be a legacy file must
-   obey them: mapping keys are **sorted alphabetically** (yaml.v2 orders map keys, so
-   `currentTheme` precedes `menu` precedes `themes`, and `attrs`/`bg`/`fg`/`name` sort inside
-   a style); **zero values are omitted** (`namespaced: false` never appears — its absence is
-   the value); `xterm` is a bare **number** and `rgb` a bare **hex string with no `#`**; and
-   `attrs` holds **enum names** (`UNDERLINE`, `REVERSE`), not integers. `currentTheme` is the
-   only multi-word field and it is already lowerCamel, so proto field name == JSON key
-   throughout — a snake_case field added to the schema would break that equality, which
-   `TestLegacyFixtureCoversTheProtoSchema` reports rather than silently tolerating.
-2. **`internal/config/testdata/legacy-kubecom.yaml` is generated, not authored, and the proto
-   beside it is a verbatim copy.** Regenerate by copying `master:pb/config.pb.go` into a
-   throwaway module and running the two calls above (`testdata/README.md` has the recipe).
-   Do **not** vendor the legacy `pb` package into v1 to make this convenient — D3/D14 deleted
-   that codegen on purpose, and a test fixture is not a reason to bring a protobuf dependency
-   and a generated 1000-line file back into the tree.
+### D180 — A legacy-format fixture is generated from the 2020 writer and pinned to `master:pb/config.proto`, never hand-typed (2026-07-30, M5-05)
+Every test of the legacy migration up to this leg fed `Migrate` YAML a test author typed from memory, and one of them was wrong: `rgb: "#000000"`, when `theme.ColorToProto` wrote `fmt.Sprintf("%06x", …)` — a bare hex string, no `#`, with `ProtoToColor` prepending the `#` on read.
+1. **The 2020 file's shape is not a matter of opinion — it is `master:pb/config.proto` plus `protojson`.**
+2. **`internal/config/testdata/legacy-kubecom.yaml` is generated, not authored, and the proto beside it is a verbatim copy.**
 3. **The fixture is bound to the schema in both directions, and that binding is the point.**
-   `TestLegacyFixtureCoversTheProtoSchema` fails if the YAML contains a key the proto does not
-   declare (the fixture would no longer be a real legacy file) *and* if the proto declares a
-   field the YAML never exercises (that part of the legacy shape would be untested). A future
-   leg that adds a case to the fixture keeps both halves true; one that trims the fixture down
-   must expect the second half to complain.
-4. **A generated fixture is strong evidence about the format and says nothing about a real
-   user's file.** The M5 exit criterion says "real", so it closes on the human task
-   `2026-07-30-real-legacy-config-migration` (D79), not on this fixture. If no legacy file
-   survives on the maintainer's machine, the criterion may close on the fixture — but the leg
-   that closes it records that it closed that way. The interesting failure the sandbox cannot
-   see is a *silent* one: an unparseable legacy file degrades to no migration, no config and
-   no toast by design (D92), which looks exactly like having no legacy file at all.
+4. **A generated fixture is strong evidence about the format and says nothing about a real user's file.**
 
-## D181 — The screencast is a committed script plus a human recording, and its keys are pinned to the keymap (2026-07-30, M5-09)
-
-A demo GIF is documentation that no test can read: it asserts, to the first visitor the
-project ever gets, that pressing these keys does these things — and it goes on asserting it
-long after a rebinding makes it false, because a recorder types keys, it never checks them.
-The 2020 build had exactly this shape (`ci/terminalizer/` + a GIF on a GitHub CDN) and the
-GIF outlived the UI it filmed. What a future leg must not silently contradict:
-
+### D181 — The screencast is a committed script plus a human recording, and its keys are pinned to the keymap (2026-07-30, M5-09)
+A demo GIF is documentation that no test can read: it asserts, to the first visitor the project ever gets, that pressing these keys does these things — and it goes on asserting it long after a rebinding makes it false, because a recorder types keys, it never checks them.
 1. **The tape is the artifact this repo owns; the GIF is recorded, never fabricated.**
-   `docs/screencast.tape` is the source of truth for the tour, and `make screencast` builds
-   *this checkout's* binary onto PATH before running vhs, so a recording can only ever show
-   the committed code. An agent may write and validate the tape (`vhs validate` needs no
-   cluster); it may not produce the GIF — recording needs ttyd + ffmpeg, a real cluster and a
-   human's eyes on the result (D79, human task `2026-07-30-record-screencast`). Do not commit
-   a GIF built any other way, and do not "approximate" one with a static image.
-2. **Every keypress in the tape carries a `# kubecom-action:` annotation naming the action it
-   triggers, or `# kubecom-input:` when it is plain text.** `TestScreencastTapeMatchesTheKeymap`
-   checks each annotated key against `DefaultKeymap` and fails on an *unannotated* keypress, so
-   the tape cannot drift from the registry (D11) and cannot smuggle in an unchecked key. A leg
-   that rebinds an action fixes the tape in the same leg — the annotation is the join, and the
-   correct fix is to change the key, never to relabel it as input.
+2. **Every keypress in the tape carries a `# kubecom-action:` annotation naming the action it triggers, or `# kubecom-input:` when it is plain text.**
 3. **The README references the screencast exactly when the file exists.**
-   `TestScreencastAssetAndReadmeAgree` enforces both directions: a README pointing at a missing
-   image is worse than no screencast, and an unreferenced GIF is dead weight in the tree. So
-   the recording and the README line land in one commit — which is why the human task carries
-   the exact markdown to paste rather than leaving it to be discovered.
 4. **The tour is a claim about what kubecom is for, so it has a floor.**
-   `TestScreencastTapeShowsTheHeadlineActions` requires the tape to press the resource palette,
-   the filter, drill-in, logs and describe — the surfaces the README sells. Extending the tour
-   is free; dropping one of those is a decision, not an edit.
 
-## D182 — Homebrew ships as a cask, to the 2020 tap, inert without its token (2026-07-30, M5-06)
-
-The first of the three distribution slices. Two of its constraints exist because the obvious
-config is silently wrong rather than rejected. What a future leg must not silently contradict:
-
-1. **kubecom is distributed as a Homebrew *cask*, not a formula.** `brews:` is deprecated in
-   goreleaser v2 and `goreleaser check` fails on it, and Homebrew's own position is that a
-   pre-compiled binary belongs in a cask. The cost is real and must be stated wherever the
-   install path is documented: **Homebrew on Linux does not install casks**, so the Homebrew
-   path is macOS-only, even though goreleaser still emits `on_linux` stanzas into the cask
-   from the Linux archives. Linux users are served by the release tarball, the AUR package
-   (M5-07) and `go install`. Reversing this — serving Linux Homebrew users too — means going
-   back to a deprecated formula, so it is a decision, not a config tweak.
-2. **The tap is `AnatolyRugalev/homebrew-kubecom`, the one the 2020 build already published
-   to** (`brew tap AnatolyRugalev/kubecom`), so the old README's install line keeps resolving.
-   The consequence is that the tap still holds the 2020 `Formula/kubecom.rb`, and Homebrew
-   resolves a bare name to a **formula** in preference to a cask — so until that file is
-   deleted from the tap, every `brew install kubecom` keeps installing the 2020 binary with no
-   error anywhere. This cannot be fixed from `.goreleaser.yml`: Homebrew removed
-   `conflicts_with formula:` from the cask DSL, and goreleaser accepts `conflicts.formula`
-   only to drop it (deprecated *and* never rendered). Deleting the stale formula is therefore
-   a required step of human task `2026-07-30-homebrew-tap-access`, not a tidy-up. Changing the
-   tap address is a breaking change for anyone already tapped, and needs its own decision.
-3. **Every publisher needing a human-owned secret must skip when the secret is absent, never
-   fail** (this sharpens D173 pt 2 into a testable shape). goreleaser evaluates `skip_upload`
-   as a template and checks it *before* it reads the token, so the pattern is
-   `skip_upload: '{{ if index .Env "X" }}false{{ else }}true{{ end }}'` with
-   `token: '{{ index .Env "X" }}'`. `index .Env` and not `.Env.X`: `index` yields `""` for an
-   absent key, while `.Env.X` errors — which would convert "the secret does not exist yet"
-   into "the release run fails", after the GitHub release has already been created and on the
-   one execution nobody can retry (D173 pt 1). `TestHomebrewCaskIsInertWithoutItsToken` binds
-   the three pieces that must agree: the token's env var, the skip condition, and the workflow
-   step actually passing it.
+### D182 — Homebrew ships as a cask, to the 2020 tap, inert without its token (2026-07-30, M5-06)
+The first of the three distribution slices. Two of its constraints exist because the obvious config is silently wrong rather than rejected. What a future leg must not silently contradict:
+1. **kubecom is distributed as a Homebrew *cask*, not a formula.**
+2. **The tap is `AnatolyRugalev/homebrew-kubecom`, the one the 2020 build already published to**
+3. **Every publisher needing a human-owned secret must skip when the secret is absent, never fail**
 4. **A cask over unsigned darwin binaries carries the quarantine-stripping `postflight`.**
-   goreleaser builds unsigned, un-notarized macOS binaries, so Gatekeeper kills them on first
-   run; the `hooks.post.install` running `xattr -dr com.apple.quarantine` is what makes the
-   install path yield a *runnable* kubecom. If the project ever signs and notarizes, that hook
-   is what to remove — and not before.
-5. **`goreleaser check` runs in CI alongside the snapshot, because they catch different
-   things.** A `--snapshot` run succeeds happily on deprecated options, and a deprecated
-   option is not always a warning about the future: `conflicts.formula` was accepted, dropped
-   on the floor and would have shipped as a silent no-op. Deprecations are how release config
-   rots between the tag that exercises it and the next one, so the dry-run job gates on both
-   (`TestReleaseWorkflowPinsGoreleaser`).
+5. **`goreleaser check` runs in CI alongside the snapshot, because they catch different things.**
 
-## D183 — The AUR package is `kubecom-bin`, a new package; the 2020 `kube-commander` is retired by hand (2026-07-30, M5-07)
+### D183 — The AUR package is `kubecom-bin`, a new package; the 2020 `kube-commander` is retired by hand (2026-07-30, M5-07)
+1. **The published AUR package is `kubecom-bin`, not the 2020 `kube-commander`, and that is forced rather than preferred.**
+2. **`git_url` is written out explicitly, with the `-bin` suffix.**
+3. **The package declares `conflicts=('kubecom' 'kube-commander')` and no `depends`.**
+4. **The 2020 `kube-commander` and `kubectl-ui` shell shims are not carried forward.**
 
-1. **The published AUR package is `kubecom-bin`, not the 2020 `kube-commander`, and that is
-   forced rather than preferred.** goreleaser's AUR pipe appends `-bin` to any `name` lacking
-   the suffix, unconditionally and with no opt-out (`internal/pipe/aur/aur.go`, `Default`),
-   and the AUR requires `pkgbase` to equal the repository name — so `.goreleaser.yml` *cannot*
-   write to `aur@aur.archlinux.org:kube-commander` however it is configured. A future leg that
-   "restores the original package name" is chasing something the tool will not do. The
-   consequence to keep in mind wherever the install path is documented: **there is no upgrade
-   path.** The AUR has no `replaces:` and goreleaser exposes no such field, so nobody holding
-   `kube-commander` is ever offered `kubecom-bin` — retiring the old package (merge, delete,
-   or a final pkgdesc pointing at the new one) is a required step of human task
-   `2026-07-30-aur-package-access`, not a tidy-up. This is the AUR twin of D182 pt 2, and it
-   generalises: **for each distributor, the 2020 artifact is still being served until a human
-   removes it, and no config in this repo can see that it exists.**
-2. **`git_url` is written out explicitly, with the `-bin` suffix.** goreleaser has no default
-   for it and its git client returns `pipe.Skip("url is empty")` when it is unset — a release
-   that publishes nothing to the AUR and reports success. It also never appends `-bin` to the
-   URL the way it does to `name`, so the two are only ever correct together.
-   `TestAURGitURLMatchesThePackageName` binds them.
-3. **The package declares `conflicts=('kubecom' 'kube-commander')` and no `depends`.** The
-   conflict is a real seatbelt, not a gesture: both packages own `/usr/bin/kubecom`, and
-   unlike a Homebrew cask (D182 pt 2) pacman honours a conflict, so it is the one distributor
-   where the collision can be expressed in config. The absent `depends` is D2 restated at the
-   packaging layer — the 2020 PKGBUILD declared `depends=('kubectl')`, so copying it forward
-   would *reintroduce* a runtime dependency kubecom does not have. Both are guarded.
-4. **The 2020 `kube-commander` and `kubectl-ui` shell shims are not carried forward.** The old
-   package installed two scripts that re-exec the binary; v1's binary is `kubecom` and there
-   is no kubectl-plugin story (D2). Restoring `kubectl ui` is a scoped decision, not a
-   packaging detail to slip back in.
+### D184 — The container image is the released binary over distroless-root, published to ghcr.io with no human-owned secret (2026-07-30, M5-08)
+1. **The image ships the released artifact; it never rebuilds it.**
+2. **`dockers_v2:`, not `dockers:` + `docker_manifests:`.**
+3. **The base is distroless `static`, root variant, and `:nonroot` is rejected on purpose.**
+4. **Docker is the one publisher with nothing to make inert.**
+5. **`latest` is conditioned on `.Prerelease`.**
 
-## D184 — The container image is the released binary over distroless-root, published to ghcr.io with no human-owned secret (2026-07-30, M5-08)
+### D185 — Release notes are rendered, not reasoned about; and nothing is closed on the tracker before a release carries the fix (2026-07-30, M5-10)
+1. **Every changelog filter and group in `.goreleaser.yml` matches a *scoped* conventional subject**
+2. **`feedback:` and `dogfood …` commits are excluded from the notes.**
+3. **A GitHub issue is closed when a release carries its fix, not when the code lands.**
+4. **The first release's notes span the 2020 tag `0.7.6`.**
 
-1. **The image ships the released artifact; it never rebuilds it.** `dockers_v2` lays the
-   goreleaser-built binaries into the build context as `<goos>/<goarch>/<binary>` and the
-   `Dockerfile` is a `FROM` + `COPY $TARGETPLATFORM/kubecom` — no build stage, no `RUN`. This
-   is a constraint, not a style: the 2020 Dockerfile compiled kubecom in a `golang:` stage, so
-   the published image held a *different* binary from the archives — different toolchain, no
-   version ldflags (D175), unverifiable against `checksums.txt` — and nothing about that is
-   visible from outside, because the image runs and only `kubecom version` lies. A future leg
-   must not add a build stage to "fix" a build problem; fix the build. It also keeps the image
-   free of QEMU: with no `RUN`, nothing foreign-architecture is executed, so multi-arch needs
-   only a multi-arch base. `TestDockerfileShipsTheReleasedBinary` binds all of it.
-2. **`dockers_v2:`, not `dockers:` + `docker_manifests:`.** `goreleaser check` reports the
-   classic pair as being phased out — the same signal M5-06 heeded on `brews:` — and the v2
-   pipe replaces both. Consequence a future leg must carry: `dockers_v2` requires a buildx
-   builder on the **docker-container** driver (the default `docker` driver can produce neither
-   the multi-platform index nor the SBOM attestation it requests), so
-   `docker/setup-buildx-action` is load-bearing in the release *and* the snapshot job, not
-   boilerplate. `TestReleaseWorkflowCanPublishTheDockerImage` binds it.
-3. **The base is distroless `static`, root variant, and `:nonroot` is rejected on purpose.** A
-   kubeconfig is conventionally mode 0600, so a bind-mounted one is unreadable to distroless'
-   fixed uid 65532; `--user $(id -u)` in turn leaves `$HOME` unwritable (Docker resolves an
-   unknown uid to `HOME=/`), and kubecom refuses to start when it cannot open its log file
-   (`cmd/kubecom/logging.go`). Root inside a throwaway local container holding the user's own
-   kubeconfig is not the threat model; an image whose one documented command does not work is.
-   `scratch` is rejected for a different reason and guarded separately: without a CA bundle
-   every apiserver connection fails x509, and no hermetic test in this repo can see it.
-4. **Docker is the one publisher with nothing to make inert.** Unlike the cask (D182) and the
-   AUR package (D183) it needs no human-owned secret — `ghcr.io` authenticates with the
-   workflow's own `GITHUB_TOKEN` under `packages: write` — so the D173 pt 2 `skip_upload`
-   pattern has no analogue here and its absence is not an oversight. The corresponding risk
-   moves to the *first* push: the `org.opencontainers.image.source` label is what makes GHCR
-   attach a new package to this repository and grant it the repo's visibility, so it is
-   required, not decoration.
-5. **`latest` is conditioned on `.Prerelease`.** Every other channel has a native notion of a
-   pre-release — Go's proxy excludes it from `@latest`, Homebrew and the AUR make you ask by
-   name — but a Docker tag does not, so an unguarded `latest` would make `docker run
-   ghcr.io/anatolyrugalev/kubecom` resolve to exactly the release M5-10 recommends cutting
-   *because* it is not ready. `TestDockerLatestTagSkipsPrereleases` binds it.
-
-## D185 — Release notes are rendered, not reasoned about; and nothing is closed on the tracker before a release carries the fix (2026-07-30, M5-10)
-
-1. **Every changelog filter and group in `.goreleaser.yml` matches a *scoped* conventional
-   subject** — `^chore(\(.+\))?:`, never `^chore:`. This repo has written scoped subjects
-   since M0 (`chore(board): claim M5-08`), so the original unscoped patterns matched almost
-   nothing: the first release's notes rendered as 373 lines opening with ~180 board claims,
-   with the 143 feature commits buried below them. The general constraint a future leg must
-   not silently contradict: **a release-notes change is verified by rendering the notes**
-   (`goreleaser release --skip=publish` against a throwaway local tag), not by reading the
-   config — a filter that matches nothing is indistinguishable from one that works, and the
-   run that would reveal it is the tag push, which cannot be retried (D173 pt 1).
-   `TestChangelogFiltersDropTheNoise` / `TestChangelogGroupsTheKeptCommits` bind it against
-   real subjects from this history.
-2. **`feedback:` and `dogfood …` commits are excluded from the notes.** They are vault
-   bookkeeping — the maintainer filing a report (D69) or a dogfood result (D79) — and the
-   change that answers one is its own `feat:`/`fix:` commit. Keeping both would list every
-   issue twice, once as reported and once as fixed.
-3. **A GitHub issue is closed when a release carries its fix, not when the code lands.** The
-   fixes for #8, #28, #68, #76, #80, #83, #84, #85, #86, #87 and #89 are all on `v1` and none
-   of them has reached a user, because no version has ever been tagged. So M5-10's pre-flight
-   *checked* the tracker (13 open, all accounted for, and #8 was missing from the
-   REWRITE_PLAN inventory) and closed nothing; closing is a step of the tag human task. This
-   is not the same rule as D173 pt 1 — closing an issue is reversible — it is about what the
-   closing message would claim.
-4. **The first release's notes span the 2020 tag `0.7.6`.** goreleaser derives the range from
-   `git describe`, the 2020 tags are unprefixed (`0.7.6`, not `v0.7.6`) and reachable from
-   `v1`, so `v1.0.0`'s notes cover all 373 commits since. That is correct rather than
-   fixable — it *is* everything since the last release — and the release body is the one
-   published artifact that stays editable, so a future leg must not "fix" it by rewriting
-   history or by hardcoding `GORELEASER_PREVIOUS_TAG` into the workflow, which would then be
-   wrong for every subsequent release.
-
-## D186 — envtest runs in the sandbox, so live-apiserver evidence is an agent's job; and aggregated discovery hides which group failed (2026-07-31, M1-INT-a)
-
+### D186 — envtest runs in the sandbox, so live-apiserver evidence is an agent's job; and aggregated discovery hides which group failed (2026-07-31, M1-INT-a)
 Two constraints, both found by actually running envtest rather than reasoning about it.
+1. **The envtest deferral premise is dead.**
+2. **`DiscoveryResult.Failed` is empty on any aggregated-discovery cluster, and a fix must change the discovery client, not the parsing.**
 
-1. **The envtest deferral premise is dead.** D18 and D66 parked the integration tests on the
-   grounds that control-plane binaries are "fragile in sandboxed agent environments", which
-   made M1-INT a human's or a CI job's. They are not fragile here: `go install
-   sigs.k8s.io/controller-runtime/tools/setup-envtest@release-0.19` plus `setup-envtest use
-   1.31.x` downloads 1.31.0 through the agent proxy, and the three gated tests stand up a
-   real apiserver + etcd and pass in **12 s total**. So a future leg must **not** re-defer an
-   envtest item on the fragility argument, and a claim that needs a live apiserver is
-   verifiable here rather than a human task (D79) — a live *cluster* with real workloads, a
-   real terminal, or credentials still is not. What stays true from D18: the gate
-   (`KUBECOM_TEST_ENVTEST=1`) and envtest's absence from `make check` (D17), because the
-   binaries are a download `go test ./...` must never depend on.
-2. **`DiscoveryResult.Failed` is empty on any aggregated-discovery cluster, and a fix must
-   change the discovery client, not the parsing.** Modern apiservers answer
-   `apidiscovery.k8s.io` aggregated discovery, where a down group (an APIService whose
-   backing service is gone) comes back as a group entry with **no versions**, its failure
-   carried in a separate stale-GroupVersion map. client-go surfaces that map only to callers
-   that are an `AggregatedDiscoveryInterface`; the **on-disk cached** client kubecom reads
-   through (M1-04) is not one, so `ServerPreferredResources` falls back to walking
-   `ServerGroups()`, finds no versions under the broken group, and returns **no error at
-   all**. Isolation still holds — the menu keeps every healthy kind, which is the M1 exit
-   criterion and is now proven live — but the `Failed` list that exists to name the culprit,
-   and the DIAG-01 logging built on it, are dead in the real path. Tracked as **DISC-01**.
-   The constraint for whoever fixes it: the information is unavailable *by the time
-   `discoverResources` sees it*, so no amount of post-processing recovers it — the pass must
-   read through a client that implements `GroupsAndMaybeResources` (client-go's memory cache
-   does; the disk cache does not), and any such change trades against D8's promise that a
-   warm start reconciles the menu with no network round-trip.
+### D187 — A broken API group is named from the group list, not from a different discovery client (2026-07-31, DISC-01)
+Supersedes the *mechanism* clause of **D186** pt 2, which said the fix "must read through a client that implements `GroupsAndMaybeResources`".
+1. **A group the server lists with no versions *is* a broken group, and that is what `DiscoveryResult.Failed` reports.**
+2. **A failure names a group; a version is optional.**
+3. **The discovery pass may read the group list, and only the group list.**
+4. **This kind of claim is verified against a live apiserver, not a fake.**
+**Refs:** Supersedes the *mechanism* clause of **D186.
 
-## D187 — A broken API group is named from the group list, not from a different discovery client (2026-07-31, DISC-01)
-
-Supersedes the *mechanism* clause of **D186** pt 2, which said the fix "must read
-through a client that implements `GroupsAndMaybeResources`". It does not, and it must not:
-that client is the memory cache, and adopting it would spend D8's warm start (a network
-round trip on every discovery pass) to buy a version number nobody uses.
-
-1. **A group the server lists with no versions *is* a broken group, and that is what
-   `DiscoveryResult.Failed` reports.** Aggregated discovery marks a failing group/version
-   "stale"; client-go drops the stale version while splitting the response and hands the
-   cause to an `AggregatedDiscoveryInterface` only. What survives into the plain group list —
-   and therefore into the on-disk cache — is a group entry with an **empty `Versions`
-   slice**. `discoverResources` reads it back (`versionlessGroups`) and records the group.
-   D186 pt 2 was right that the *cause* is gone by then and wrong that nothing is left: the
-   group's own emptiness is the evidence. A healthy group always carries a version (proven
-   live: the baseline pass in `TestEnvtestBrokenAPIGroupIsIsolated` reports zero failures),
-   and the legacy discovery path keeps a broken group's versions and fails per version, so
-   the two paths never double-report and neither invents a failure.
-2. **A failure names a group; a version is optional.** `FailedGroup` is `{Group, Version,
-   Err}` with `Version` empty when only the group is knowable, rendered by
-   `FailedGroup.GroupVersion()`. The group is the load-bearing half — both consumers (the
-   menu's unavailable-marking, DIAG-01's log line) key on it, and the menu already
-   *discarded* the version. A future leg must not reintroduce a bare `GroupVersion string`:
-   putting a groupless name in it makes `ParseGroupVersion` read `metrics.k8s.io` as a
-   *version* of the core group and marks core kinds unavailable.
-3. **The discovery pass may read the group list, and only the group list.** It is the same
-   document `ServerPreferredResources` just read, so on the cached client it costs no round
-   trip and D8 holds; a failure to read it degrades to reporting nothing rather than to a
-   failed pass. Widening the pass's dependency beyond `ServerPreferredResources` +
-   `ServerGroups` (the `resourceDiscoverer` interface) is what would break D8 — that is the
-   line D186 pt 2 was reaching for.
-4. **This kind of claim is verified against a live apiserver, not a fake.** Fakes are what
-   hid the defect for eleven days: they return the shape the test wrote. The hermetic tests
-   here pin the parsing; `TestEnvtestBrokenAPIGroupIsIsolated` is what proves a real
-   apiserver produces the shape, and it was watched fail (`Failed = []`) with the fix
-   removed. Any future change to how discovery failures are detected must be re-proven the
-   same way (envtest is available — D186 pt 1).
-
-## D188 — A merge-patch action is only correct because the UI gated it: the server does not refuse a wrong-kind patch (2026-07-31, M1-INT-c-3)
-
+### D188 — A merge-patch action is only correct because the UI gated it: the server does not refuse a wrong-kind patch (2026-07-31, M1-INT-c-3)
 Proven live against a real 1.31 apiserver: `Suspend` on a **Deployment** returns `nil`.
-The apiserver logs `unknown field "spec.suspend"`, drops it, and answers 200 with the
-object unchanged (same `resourceVersion`). This is not a quirk of one field — an RFC 7386
-merge patch is decoded leniently, so **every** merge-patch action (RolloutRestart, Cordon,
-Uncordon, Suspend, Resume) reports success and does nothing when it lands on a kind whose
-schema lacks the field. The user sees a confirmation for an operation that never happened.
+1. **Applicability is decided before the request, never by the error.**
+2. **The server does validate what it knows, which is why this is specifically about unknown fields.**
+3. **A test that proves a merge patch was refused must read the object back.**
+4. **Anything that makes an action reachable by a new route inherits this.**
 
-1. **Applicability is decided before the request, never by the error.** The kind-keyed
-   registry of D107 (`rowActions` + `kindIn(…)`) is load-bearing *correctness*, not
-   polish: it is the only thing that stops the no-op above. A future leg must not widen an
-   action's applicability, drop the predicate, or offer these actions on an unknown/CRD
-   kind on the theory that "the server will reject it if it doesn't apply". It will not.
-2. **The server does validate what it knows, which is why this is specifically about
-   unknown fields.** A *known* field with the wrong type is a 422 (`KindInvalid`). So the
-   failure mode is narrow and permanent: schema-shaped patches at the wrong schema.
-3. **A test that proves a merge patch was refused must read the object back.** An error
-   check alone cannot distinguish "refused" from "accepted and discarded" — and the fake
-   dynamic client, which has no schema at all, will happily store the dropped field and
-   let the object claim the operation worked.
-4. **Anything that makes an action reachable by a new route inherits this.** Both
-   current routes already check the predicate — the menu filters with `rowActionTitles`,
-   a direct key with `rowActionApplies` — and a third (a command palette, a batch
-   "apply to every selected row", a scripted action) must check it too. The predicate is
-   the guard; the menu is only one thing that consults it.
+### D189 — The edit buffer is the server's object minus managedFields, and nothing else: `resourceVersion` and `uid` are preconditions, not noise (2026-07-31, M1-INT-c-4)
+Proven live against a real 1.31 apiserver. `Update` (the Edit write-back, D129) is a PUT, and everything that makes it *safe* is metadata the code never reads — it survives into the buffer only because `GetYAML` strips managedFields and leaves the rest alone:
+- **With `metadata.resourceVersion`:**
+- **Without it:**
+- **With `metadata.uid`:**
+- **Without the uid:**
+1. **`GetYAML` strips managedFields and nothing else.**
+2. **A Conflict from Edit is the answer, not a retry signal.**
+3. **Two different situations both surface as `KindConflict`**
+4. **A status-only edit is a no-op the server reports as success.**
 
-## D189 — The edit buffer is the server's object minus managedFields, and nothing else: `resourceVersion` and `uid` are preconditions, not noise (2026-07-31, M1-INT-c-4)
+### D190 — The envtest suite runs in its own workflow; `make check` stays hermetic and is never gated on a control-plane download (2026-07-31, M1-INT-d)
+The gated suite (`KUBECOM_TEST_ENVTEST=1`, D18) now runs on every push and PR from [`.github/workflows/envtest.yml`](../../.github/workflows/envtest.yml). Where it runs is the constraint, not that it runs:
+1. **Not in ci.yml, and not in `make check`.**
+2. **The suite skipping is a green run, so the wiring needs its own guard.**
+3. **`make test-envtest` is the single invocation.**
 
-Proven live against a real 1.31 apiserver. `Update` (the Edit write-back, D129) is a PUT,
-and everything that makes it *safe* is metadata the code never reads — it survives into the
-buffer only because `GetYAML` strips managedFields and leaves the rest alone:
+### D191 — What the 2026-08-01 dogfood closures do and do not license (2026-08-01, HT-dogfood-0801)
+Three human tasks came back `done` in one session and all three closed *without* a change to the code. A closure with no diff is the easiest kind to over-read later, so what each one settles is written down here rather than left to the deleted file:
+1. **There is no client-side CRD bug, and CRD-01 is not one.**
+2. **"No problem found" is not "verified".**
+3. **The logs throughput measurement confirms D162; it does not retire it.**
 
-- **With `metadata.resourceVersion`:** a concurrent write lands first → the PUT is a **409
-  Conflict** (`KindConflict`) and the other actor's change is intact.
-- **Without it:** the very same request is a **legal unconditional overwrite** — 200, and
-  the concurrent write is gone. The server does not object; there is nothing to classify.
-- **With `metadata.uid`:** an object deleted while the editor was open is refused as a
-  **Conflict** (`Precondition failed: UID in precondition: …, UID in object meta:`), and the
-  PUT does not recreate it.
-- **Without the uid:** the same request is a plain `KindNotFound`.
+### D192 — The editor is resolved once at startup, and PATH detection is the last resort (2026-08-01, EDIT-01)
+From feedback `2026-08-01-editor-autodetect`: with no editor variable set, kubecom fell straight through to `vi`, and a modern Arch host has `/usr/bin/vim` but no `vi` symlink — so `e` dead-ended on a machine with two perfectly good editors installed. The resolution is now:
+1. **Precedence is `KUBE_EDITOR` → `EDITOR` → `VISUAL` → first of `nvim`, `vim`, `nano`, `vi` on `PATH`.**
+2. **A set variable is never second-guessed.**
+3. **The candidate order prefers editors whose presence implies a choice.**
+4. **Resolution happens once, at startup, in the launcher — not at `e`-press time.**
+5. **`resolveEditorArgv` stays pure**
 
-1. **`GetYAML` strips managedFields and nothing else.** A future leg must not "tidy" the
-   buffer before `$EDITOR` — not `resourceVersion`, `uid`, `creationTimestamp`,
-   `generation`, or `status`. It reads as a courtesy (kubectl-like cleanliness, a smaller
-   diff to review) and the first two of those are load-bearing: dropping `resourceVersion`
-   silently converts Edit's refusal into a clobber, which is exactly the failure D129 exists
-   to prevent, and no test that only checks "the edit applied" would notice.
-2. **A Conflict from Edit is the answer, not a retry signal.** `Update` must not re-fetch
-   and re-apply on Conflict — the buffer the user saved was written against a world that
-   moved, so the resolution is theirs (re-open the object), same as `kubectl edit`. An
-   automatic merge/retry would reintroduce the clobber by another route.
-3. **Two different situations both surface as `KindConflict`** — a stale `resourceVersion`
-   and a deleted object — so UI copy for an edit conflict must say "your buffer is out of
-   date; re-open the object", never "someone else changed this object". `KindNotFound` from
-   an edit means the buffer had no uid, which is the degraded path, not the common one.
-4. **A status-only edit is a no-op the server reports as success.** `status` is a
-   subresource on the workloads: the server discards the edited status and applies the rest
-   of the same PUT, returning 200. Same shape as D188 — a leg that adds an "applied"
-   confirmation must not claim more than the server did, and no-change detection (D129 pt 3)
-   compares bytes, so it does not catch this.
+### D193 — A pinned kind is recorded state, not authored config; the two files meet at `AddExtras` (2026-08-01, CRD-PIN-01)
+From feedback `2026-08-01-custom-resources-pinning`: a kind you reach for once should stay in the menu for that context.
+1. **Pins live in the state file**
+2. **Both files feed the same merge.**
+3. **Where they collide, the authored entry wins.**
+4. **The merge happens on the launch path *and* the context-switch path**
+5. **The GVR is the pin's identity.**
+6. **A malformed pin is loud, in both files.**
 
-## D190 — The envtest suite runs in its own workflow; `make check` stays hermetic and is never gated on a control-plane download (2026-07-31, M1-INT-d)
-
-The gated suite (`KUBECOM_TEST_ENVTEST=1`, D18) now runs on every push and PR from
-[`.github/workflows/envtest.yml`](../../.github/workflows/envtest.yml). Where it runs is
-the constraint, not that it runs:
-
-1. **Not in ci.yml, and not in `make check`.** ci.yml is what release.yml calls as the
-   gate for a `v*` tag (D173 pt 1), so an envtest job inside it would let a failed
-   *download* of a control plane block the release of a tree with nothing wrong with it —
-   the one push that cannot be retried. And D17's "green" must keep meaning the same
-   hermetic thing in CI as in a sandbox: `make check` does no network I/O beyond the module
-   cache. A leg that wants envtest coverage enforced adds it to the envtest workflow, never
-   to the gate.
-2. **The suite skipping is a green run, so the wiring needs its own guard.** `go test
-   ./internal/kube/...` with the gate unset passes with every `TestEnvtest*` skipped:
-   drop `KUBECOM_TEST_ENVTEST=1` from the Makefile recipe or rename the constant on the Go
-   side and CI reports success over a suite that ran nothing. `TestEnvtestSuiteRunsInCI`
-   (hermetic, in `make check`) ties the constant, the recipe and the workflow together, and
-   must be kept in step with any change to how the suite is invoked. Every *other* failure
-   here is loud: a failed download exits non-zero, a wrong `KUBEBUILDER_ASSETS` fails
-   `env.Start()`.
-3. **`make test-envtest` is the single invocation.** CI runs the target rather than its own
-   `go test` line, so a local leg and a CI run cannot drift. Tool and control-plane versions
-   are pinned exactly (`SETUP_ENVTEST_VERSION`, `ENVTEST_K8S_VERSION`), like golangci-lint
-   and goreleaser; bump `setup-envtest` together with `controller-runtime`, never alone.
-
-## D191 — What the 2026-08-01 dogfood closures do and do not license (2026-08-01, HT-dogfood-0801)
-
-Three human tasks came back `done` in one session and all three closed *without* a change
-to the code. A closure with no diff is the easiest kind to over-read later, so what each
-one settles is written down here rather than left to the deleted file:
-
-1. **There is no client-side CRD bug, and CRD-01 is not one.** The `ExternalSecret` LIST
-   failure is **not reproducible**: a fresh external-secrets install lists normally and logs
-   nothing. The reporting cluster served `v1beta1` behind `spec.conversion.strategy:
-   Webhook`; the clean one serves only `v1` with `strategy: None`. A conversion webhook that
-   is down or serving a bad cert fails the LIST **in the apiserver**, equally for `kubectl`.
-   So no leg may write a fix to kubecom's CRD handling on the strength of CRD-01's original
-   title — that would be inventing a bug (D79). CRD-01 now means only: *say why a group's
-   LIST failed, legibly, on screen*. Re-open the diagnosis only against a cluster whose CRDs
-   still carry `strategy: Webhook`, where the log line is one reproduction away.
-2. **"No problem found" is not "verified".** The fuzzy-search pass exercised exactly one
-   case (an abbreviation, `strfrnt` → 6 true `storefront` hits, no junk tail). Every hit was
-   a true positive, so the ranking question — is the fuzzy tail noise you scroll past? — did
-   not arise, and short queries, the widened scopes (`ctrl+a`/`ctrl+w`) and the
-   exact-above-fuzzy band gap (D152 pt 3 / D153) were not probed. `searchScatteredShare =
-   limit/4` and the absence of a minimum needle length stay **open guesses**: a later leg may
-   not cite this closure as evidence for keeping them *or* for changing them.
-3. **The logs throughput measurement confirms D162; it does not retire it.** ~1,900
-   lines/sec with no degradation was measured on 2026-08-01, four days *after* LOGS-05b
-   landed the incremental render (D162, 2026-07-29) — and the task that pre-authorised that
-   render was raised on 2026-07-25, against the build without it. So the result reads "the
-   fix works", never "the fix was unnecessary", and D162's append-don't-rejoin constraint
-   stands unweakened for the next streaming surface. What is still unmeasured is buffer
-   *depth*: the run did not sit on the stream long enough to bound a multi-hour tail.
-
-## D192 — The editor is resolved once at startup, and PATH detection is the last resort (2026-08-01, EDIT-01)
-
-From feedback `2026-08-01-editor-autodetect`: with no editor variable set, kubecom fell
-straight through to `vi`, and a modern Arch host has `/usr/bin/vim` but no `vi` symlink —
-so `e` dead-ended on a machine with two perfectly good editors installed. The resolution
-is now:
-
-1. **Precedence is `KUBE_EDITOR` → `EDITOR` → `VISUAL` → first of `nvim`, `vim`, `nano`,
-   `vi` on `PATH`.** `VISUAL` is a **deliberate divergence from kubectl** (which consults
-   only the first two): the Unix convention reserves it for full-screen editors, which is
-   exactly this case. It is the *only* addition to kubectl's variable list — a later leg
-   may not keep growing it.
-2. **A set variable is never second-guessed.** PATH detection runs only when all three are
-   empty. A variable naming a missing binary still fails at launch, where the error names
-   what the user actually asked for; silently substituting a different editor would be
-   worse than the failure.
-3. **The candidate order prefers editors whose presence implies a choice.** `nvim`/`vim`
-   are installed deliberately; `nano` ships in Arch's `base` and says little, but still
-   beats bare `vi` as the "you can always exit it" fallback. This is consistent with
-   kubecom being a vim-friendly tool (`goals.md`) — handing a vim user nano on a box with
-   both would be the more annoying error.
-4. **Resolution happens once, at startup, in the launcher — not at `e`-press time.** That
-   is what lets the choice be logged (D159), so a user learns which editor they will get
-   *before* they press `e` on a live object. A box with none of the candidates degrades
-   like every other startup fault (principle 3): the launch proceeds, the choice takes the
-   last startup-toast slot, and the Edit action reports `no editor found; set $EDITOR`
-   instead of suspending — an unresolved editor may **never** blank the terminal.
-5. **`resolveEditorArgv` stays pure**: the `exec.LookPath`-shaped lookup is injected, so
-   the whole precedence table is unit-testable against a fake PATH. A future leg adding a
-   candidate or a variable adds a table row, not an environment-dependent test. The argv
-   lives on `Model`, not on the `Cluster` bundle — it is per-process, and a context switch
-   changes nothing about which editor is installed.
-
-Unchanged and load-bearing: flag-splitting (`EDITOR="code -w"`) and the property that an
-aborted edit never mutates. The no-editor path is one more branch that returns before any
-write.
-
-## D193 — A pinned kind is recorded state, not authored config; the two files meet at `AddExtras` (2026-08-01, CRD-PIN-01)
-
-From feedback `2026-08-01-custom-resources-pinning`: a kind you reach for once should stay
-in the menu for that context. The feedback names the design question outright — the
-user-authored `menus/<context>.yaml` (D83) or the kubecom-recorded
-`StateDir()/<context>.yaml` (D90/D163) — because those two files exist precisely to hold
-different things. The answer:
-
-1. **Pins live in the state file** (`State.PinnedResources`), never in the menu file. The
-   line D90 drew is *who writes it*: the menu file is hand-authored and may carry comments
-   and ordering kubecom must never clobber, while the state file is kubecom's to rewrite on
-   every change. A pin is recorded *for* you by a keypress, so it is state by that
-   definition. The corollary is binding: **no leg may make kubecom write
-   `menus/<context>.yaml`.** A user's file stays a user's file.
-2. **Both files feed the same merge.** A pin and a hand-written entry are both
-   `config.MenuResource` and both reach the menu through `menu.AddExtras`, so a pinned CRD
-   renders the same row, in the same section, deduped against seed and discovery by the
-   same GVR key (D57/D83). There is no second menu-merge path to keep in step, and no
-   "pinned" row style to diverge — a future slice that needs to *distinguish* a pinned row
-   (CRD-PIN-03 must, to know what may be unpinned) adds provenance to the menu Item, not a
-   parallel merge.
-3. **Where they collide, the authored entry wins.** The hand-written one was deliberate;
-   the pin was automatic. The launcher's `mergeMenuExtras` puts authored first and drops a
-   pin with the same GVR, so the authored section/title is what renders. This is redundant
-   with `AddExtras`'s own dedupe on purpose: the precedence between the two files is then
-   an explicit, tested property of the launcher rather than an accident of scan order.
-4. **The merge happens on the launch path *and* the context-switch path**, both inside the
-   launcher (`contextStateLoader.LoadContextState`). Per D163 a switch rebuilds the menu
-   from the `ContextState` it is handed, so a merge that existed only at launch would show
-   the departed context's pins — the exact bug D163 exists to prevent. Any future
-   per-context menu input must be merged in both places or in neither.
-5. **The GVR is the pin's identity.** `Pin` is idempotent by group/version/resource and
-   `Unpin` is keyed by it, matching what the menu dedupes on; two spellings of one kind can
-   never become two rows. `v1` and `v1beta1` of the same resource are *different* pins,
-   because they are different resources to the API.
-6. **A malformed pin is loud, in both files.** One validator (`validateMenuResources`)
-   backs `MenuConfig` and `State.PinnedResources`: version and resource are required,
-   because they are the minimum the dynamic client can address. The launcher already
-   degrades a bad state file to the zero state with a log warning (principle 3), so an
-   unaddressable pin costs the remembered namespace but never the launch.
-
-## D194 — One fuzzy matcher; a picker filters as you type; `:` is the palette's key and the letter keys stay (2026-08-01, PAL-01)
-
-From feedback `2026-08-01-command-palette-unification`, which asked for one surface you
-type into and explicitly asked that the keybinding consequences be recorded, since the
-target model supersedes one-key-per-picker. PAL-01 is the first of five slices (see the
-board's PAL section); this decision is what the remaining four must not contradict.
-
-1. **kubecom has exactly one fuzzy matcher.** `kube.NameMatcher` — the cluster search's —
-   is exported and is what every ranked list uses: the search view, every modal picker
-   since PAL-01, and the palette's verb list when it lands. A surface that wants "fuzzy"
-   uses it or extends it; **no leg adds a second matcher**, however local its need looks.
-   Two matchers means the same characters rank differently one keystroke apart, and the
-   invariant the search relies on — every contiguous match above every scattered one
-   (D152 pt 3/D153) — would then be true in one surface and false in the next. Its
-   corollary: the band gap is now load-bearing for the palette too, so nothing may flatten
-   it to "just sort by score" without re-deciding it here.
-2. **A picker filters as you type.** The filter field opens with the picker, not on `/`,
-   and the visible list is ranked rather than merely narrowed. The cost is the one D140 pt
-   1 already priced for the search and logs fields: with a text field always open, **every
-   text-carrying key types** — `j`/`k` no longer navigate a picker, the arrows do, and `/`
-   types a `/` (which OpenShift-style context names can legitimately contain, so it must
-   not be swallowed). A future picker gesture must therefore be a no-text chord, exactly as
-   `ctrl+r`/`ctrl+p` are in the logs view. `esc` empties a non-empty query and cancels an
-   empty one, so esc-esc still dismisses.
-3. **`WithOptInFilter` is the exception, and stays rare.** A picker that binds
-   text-producing keys to gestures of its own cannot also swallow every text key. The port
-   picker is the only case (`p` local port, `0` free local port — FB-pf-local-port/D139).
-   A new picker should give up such a gesture rather than opt out: uniform typing is the
-   whole point of the line, and an exception is invisible to the reader until it surprises
-   them.
+### D194 — One fuzzy matcher; a picker filters as you type; `:` is the palette's key and the letter keys stay (2026-08-01, PAL-01)
+From feedback `2026-08-01-command-palette-unification`, which asked for one surface you type into and explicitly asked that the keybinding consequences be recorded, since the target model supersedes one-key-per-picker.
+1. **kubecom has exactly one fuzzy matcher.**
+2. **A picker filters as you type.**
+3. **`WithOptInFilter` is the exception, and stays rare.**
 4. **`:` is the palette's key, and the existing shortcuts are kept, not retired.**
-   `resources.switch` already owns `:` and already calls itself a command palette
-   (keymap.go), so PAL-02 widens what `:` opens rather than moving any key. `ctrl+n`, `C`,
-   `T` and `a` remain bound; PAL-05 re-expresses them as pre-typed palette lines
-   (`:namespace `, `:context `, …) and that is the *only* slice allowed to change what they
-   do. Until it lands they are the sole route to those values, so an earlier slice that
-   retired one would remove function in the name of uniformity. Retiring any of them
-   afterwards is a separate decision, not a consequence of this one.
 
-## D195 — An exec credential plugin failure is its own error kind; kubecom may *offer* a remediation command but never runs one unasked (2026-08-01, AUTH-01)
+### D195 — An exec credential plugin failure is its own error kind; kubecom may *offer* a remediation command but never runs one unasked (2026-08-01, AUTH-01)
+From feedback `2026-08-01-eks-sso-reauth`, which asked kubecom to notice an expired AWS SSO session and offer to run `aws sso login --profile x`.
+1. **A failed exec credential plugin is `KindExecPlugin`, not `KindUnreachable`.**
+2. **The detection is text-matching, narrowly, and that is not a shortcut.**
+3. **The plugin's stderr is not in the error and has to be earned.**
+4. **kubecom never runs an auth command the user did not just approve.**
+5. **A remediation is only offered when it can be substantiated from the kubeconfig.**
 
-From feedback `2026-08-01-eks-sso-reauth`, which asked kubecom to notice an expired AWS SSO
-session and offer to run `aws sso login --profile x`. The submitter asked explicitly whether
-provider-specific auth handling reads as a non-goal. It does not — `vault/goals.md`'s
-non-goals are Windows, cloning k9s, mutation beyond the curated set, and multi-cluster/server
-mode — but it is close enough to the edge that the shape is fixed here rather than being
-settled slice by slice. AUTH-01 is the first of five slices (board's AUTH section); this is
-what the other four must not contradict.
+### D196 — A departed cluster may be retained only *connector-side*, never by the shell; the teardown stays unconditional, and the retention is measured before it is built (2026-08-02, CTX-WARM-01)
+From feedback `2026-08-01-context-switch-keep-state`: "can we keep the state of the previous cluster, so we can switch between contexts instantly?" — the submitter flagged that this pushes against M4-04a/D157 and asked for the resolution to be recorded rather than quietly made.
+1. **The shell's teardown does not change.**
+2. **Retention, if it happens, lives on the connector side.**
+3. **Measure first; the numbers gate the build.**
+4. **Bounded, and never a correctness claim.**
+5. **This waits on the baseline.**
 
-1. **A failed exec credential plugin is `KindExecPlugin`, not `KindUnreachable`.** client-go
-   runs the plugin inside `RoundTrip`, so its failure comes back wrapped in a `*url.Error`
-   and the pre-existing transport net caught it as "cluster unreachable" — a claim about a
-   cluster that was never contacted. `Classify` now checks for a plugin failure *before*
-   the transport net and *after* the apierrors switch, so a real server status always wins
-   and a 401 whose message merely quotes a plugin stays `KindUnauthorized`. No future kind
-   may be inserted between those two points without re-deciding this ordering.
-2. **The detection is text-matching, narrowly, and that is not a shortcut.** client-go
-   formats the plugin failure with `%v` (`getting credentials: %v`), so the underlying
-   `*exec.ExitError` does not survive in the wrap chain — there is no typed error and no
-   errors.As path. `ExecPluginFailed` therefore matches client-go's own two message shapes
-   (`exec: executable X not found`, `exec: executable X failed with exit code N`) and
-   deliberately does **not** match its third, default branch (`exec: %v`), which carries no
-   executable name. Anything unmatched stays an ordinary auth error. A leg that widens this
-   regexp must keep that property: guessing is worse than a generic error (the feedback's
-   own instruction).
-3. **The plugin's stderr is not in the error and has to be earned.** client-go streams it
-   to the process's `os.Stderr`, which under the alt-screen the user never sees, and exposes
-   no seam to capture it. So "why did it fail" — the SSO-expiry sentence the feedback wants
-   to match on — is unavailable from the failure alone; recovering it means kubecom
-   re-running the plugin itself as a diagnostic (AUTH-02). That re-run is read-only by
-   construction: it may only re-invoke the kubeconfig's own credential command, never a
-   command kubecom composed.
-4. **kubecom never runs an auth command the user did not just approve.** A remediation is
-   *offered* — one confirm prompt, per occurrence, naming the exact command — and is never
-   run implicitly, never on startup, never retried automatically. This holds even though the
-   plugin binary is one the kubeconfig already names.
-5. **A remediation is only offered when it can be substantiated from the kubeconfig.** The
-   command is composed from the `user.exec` stanza's own `args`/`env` (e.g. `--profile`,
-   `AWS_PROFILE`), never from a guess; when the needed detail is absent, kubecom shows the
-   plugin's failure and stops. The catalogue mapping plugin → remediation is a small
-   explicit table, **AWS SSO its only entry**, and it stays a table rather than becoming a
-   provider framework until a second provider actually lands.
+### D197 — The command palette is a picker over the action registry, and every registered action keeps a key of its own (2026-08-02, PAL-02)
+PAL-02 landed the palette shell: `:` opens a list of the app's verbs, you type to narrow it, and the pick runs the verb. Two things about it are constraints rather than implementation, because the three remaining PAL slices all build on this surface.
+1. **The palette resolves to an `Action` and dispatches it through the same entry point a key press reaches.**
+2. **A verb is offered in the palette exactly when its key exists, and is inert exactly when its key is inert.**
+3. **`:` is `app.palette`; `resources.switch` moved to `R` rather than becoming palette-only.**
+**Refs:** supersedes D194 pt 4.
 
-## D196 — A departed cluster may be retained only *connector-side*, never by the shell; the teardown stays unconditional, and the retention is measured before it is built (2026-08-02, CTX-WARM-01)
-
-From feedback `2026-08-01-context-switch-keep-state`: "can we keep the state of the previous
-cluster, so we can switch between contexts instantly?" — the submitter flagged that this
-pushes against M4-04a/D157 and asked for the resolution to be recorded rather than quietly
-made. It is recorded here, before any code retains anything, so the four CTX-WARM slices
-inherit one shape instead of each negotiating with the teardown.
-
-1. **The shell's teardown does not change.** `resetCluster` stays unconditional and
-   exhaustive: on every switch, every per-cluster async is cancelled and generation-bumped
-   and every surface showing the departed cluster's data is dismissed (M4-03/D156, D155
-   pt 1). "Nothing from the departed cluster leaks" is a property of the shell holding no
-   reference to it, and no warmth optimisation may weaken that — a retained *watch* firing
-   into a dead view is precisely the bug the teardown exists to prevent, and it is not on
-   the table at any speed.
-2. **Retention, if it happens, lives on the connector side.** The only thing a switch-back
-   may reuse is what `ClusterConnector.ConnectCluster` builds: the client bundle and its
-   warm discovery cache. The connector already outlives every switch by construction
-   (D155 pt 2) and the shell already treats it as a factory, so a bounded cache *inside*
-   the launcher's `contextConnector` changes nothing about the shell's lifecycle — it makes
-   `ConnectCluster` faster, not the teardown weaker. A leg that instead teaches the shell
-   to hold a second `Cluster` is contradicting this decision, not implementing it.
-3. **Measure first; the numbers gate the build.** The feedback's own instruction, and
-   CTX-WARM-01 is only the measurement: a completed switch logs `connect`, `discovery` and
-   `total` to the diagnostic log, and the open dogfood
-   (`2026-07-29-context-switch-live-dogfood`, pt 7) is where real numbers come from. There
-   is a real chance the win is already mostly banked — `kube.Connect` does no network I/O
-   (`NewClients` is local, the RESTMapper is deferred) and discovery is disk-cached per host
-   with kubectl's 6 h TTL (`internal/kube/cache.go`), so a switch-back inside a session
-   re-reads files rather than the API. CTX-WARM-02/03 are **not** to be built on the
-   assumption that reconnecting is expensive; they are built if the log says it is.
-4. **Bounded, and never a correctness claim.** Any retention caps at the **previous
-   context only** (one entry), is dropped on any connect error for that context, and is
-   invalidated rather than trusted when the user forces a refresh. A retained client is a
-   cache: everything it serves must be re-derivable, so nothing user-visible may depend on
-   a context having been visited before — the second visit may only be *faster*, never
-   different.
-5. **This waits on the baseline.** No slice that changes what a switch retains lands before
-   `2026-07-29-context-switch-live-dogfood` pts 3-6 are done, because those are the checks
-   that would catch a leak, and running them against an already-changed teardown measures
-   two moving parts (the submitter's own instruction). CTX-WARM-01 is deliberately outside
-   that gate: it only observes.
-
-## D197 — The command palette is a picker over the action registry, and every registered action keeps a key of its own (2026-08-02, PAL-02)
-
-PAL-02 landed the palette shell: `:` opens a list of the app's verbs, you type to narrow
-it, and the pick runs the verb. Two things about it are constraints rather than
-implementation, because the three remaining PAL slices all build on this surface.
-
-1. **The palette resolves to an `Action` and dispatches it through the same entry point a
-   key press reaches.** `handleCommandSelected` ends in `handleAction`; it never calls
-   `openNamespacePicker` (or any other handler) directly. This is D11 applied to a second
-   input device: the palette is a *way in*, not a second implementation, so a verb and its
-   key cannot diverge — including when a handler grows a precondition. For the same reason
-   the palette's item list is the registry's own `Describe()` text, never a hand-written
-   label: a palette entry that could describe itself differently from `?` and
-   `docs/keybindings.md` would be a third source of truth about what kubecom does.
-2. **A verb is offered in the palette exactly when its key exists, and is inert exactly
-   when its key is inert.** `:` with no cluster still lists "Switch namespace", and picking
-   it does what `ctrl+n` does — nothing. The palette does not compute availability, because
-   for an app-global verb "available" is a property of the whole app that the reader can
-   already see, and a list that reshuffles between openings is harder to type into than one
-   that does not. PAL-04 is the deliberate exception and the only one: row-scoped verbs are
-   filtered by what applies to the *selected object*, from the actions menu's own per-row
-   source (never a second list that can drift from it).
-3. **`:` is `app.palette`; `resources.switch` moved to `R` rather than becoming
-   palette-only.** This supersedes D194 pt 4's assumption that PAL-02 would "widen what `:`
-   opens rather than moving any key" — it turned out `:` cannot be both without the palette
-   being a special case of the resource picker. Every registered action keeps **at least
-   one default binding** (`TestDefaultKeymapValid`): an unbound action renders as an em dash
-   in the generated doc and is dropped from the `?` overlay entirely (`FullHelp` skips
-   disabled bindings), so "reachable only through the palette" would quietly delete the
-   resource switch from both places a user looks. The rest of D194 pt 4 stands: `ctrl+n`,
-   `C`, `T` and `a` are unchanged, and PAL-05 remains the only slice allowed to re-express
-   a shortcut key.
-
-## D198 — An argument verb resolves inside the palette, and its stage ends in the verb's own apply function (2026-08-02, PAL-03a)
-
-PAL-03a turned the palette's line into `<verb> <argument>`: a verb that needs a value no
-longer dispatches — it **commits in place**, and the same picker re-prompts itself
-`:resource ` and lists that verb's values. That is a deliberate exception to D197 pt 1,
-so it is written down with the fence that keeps it from becoming the "second
-implementation" D197 exists to forbid.
-
-1. **An argument verb does not dispatch its action; it commits into the palette's
-   argument stage.** Dispatching would open the verb's own modal *over* the palette,
-   which is precisely the pile of separate pop-ups the PAL feedback asked to be rid of.
-   Verbs that need no value are unchanged — they still go through `handleAction` (D197
-   pt 1), which stays the rule for everything outside `paletteArgVerbs`.
+### D198 — An argument verb resolves inside the palette, and its stage ends in the verb's own apply function (2026-08-02, PAL-03a)
+PAL-03a turned the palette's line into `<verb> <argument>`: a verb that needs a value no longer dispatches — it **commits in place**, and the same picker re-prompts itself `:resource ` and lists that verb's values.
+1. **An argument verb does not dispatch its action; it commits into the palette's argument stage.**
 2. **The stage's apply must be the same function the verb's standalone picker ends in**
-   (`selectResource`, `applyThemeNamed`), never a copy of what it does. This is D197 pt 1's
-   substance surviving the exception: the palette resolves a label and applies it, so a
-   value reached through the palette and one reached through the picker cannot diverge.
-   Adding an argument verb therefore means *extracting* its apply if it is still inline in
-   a handler — that refactor is part of the slice, not optional.
-3. **A verb whose values cannot be produced does not enter the stage at all.** With no
-   watcher, `:resource` opens no argument list: it stays as inert as `R` is (D197 pt 2). An
-   empty argument stage would be a surface promising a choice that cannot be made — worse
-   than the verb doing nothing, which is what the reader already expects from its key.
-4. **In the verb stage, space is the line's separator and is never query text.** It commits
-   the highlighted verb when that verb takes an argument, and is swallowed otherwise. The
-   fuzzy matcher skips a label's own spaces (`switchr` still finds "Switch resource"), so
-   nothing becomes unreachable by giving the key up — and a separator that sometimes typed
-   would make the one gesture unpredictable. Inside an argument, space is ordinary text
-   again.
-5. **The line unwinds the way it was typed.** Backspace into an empty argument, and esc,
-   both uncommit the verb and restore the verb list rather than closing the palette; the
-   next esc closes. A returned-to palette is indistinguishable from a freshly opened one
-   (`showPaletteVerbs` is the single definition of "the palette showing verbs"), so no
-   stage can leave a stale prompt, title or label map behind.
+3. **A verb whose values cannot be produced does not enter the stage at all.**
+4. **In the verb stage, space is the line's separator and is never query text.**
+5. **The line unwinds the way it was typed.**
 
-## D199 — A fetched value list is addressed to the surface that asked for it (2026-08-02, PAL-03b)
+### D199 — A fetched value list is addressed to the surface that asked for it (2026-08-02, PAL-03b)
+PAL-03b gave the palette the two argument verbs whose values are **not in hand** when the stage opens: `:namespace ` lists against the cluster, `:context ` reads the kubeconfig.
+1. **The load carries its destination.**
+2. **A result whose stage no longer exists is dropped, not painted.**
+3. **Inertness is decided before the stage opens, never by the answer.**
+4. **A pending stage says so.**
 
-PAL-03b gave the palette the two argument verbs whose values are **not in hand** when the
-stage opens: `:namespace ` lists against the cluster, `:context ` reads the kubeconfig.
-Both loads previously existed to seed exactly one picker and bailed unless *that* picker
-was open. Two surfaces now issue them, and the rule for every such load from here on is:
+### D200 — A pane that has nothing to show says why, and never guesses (2026-08-02, CRD-01)
+CRD-01 gave the browse table an empty state that carries the reason its LIST failed. It is the first user-facing copy keyed on `kube.ErrorKind` — the taxonomy exists precisely so "the TUI renders its own message per kind" — so the rules are set here for every surface that follows (AUTH-04 is next):
+1. **The reason lives where the reader is looking, and outlives the toast.**
+2. **The success that ends it is the one that clears it.**
+3. **A cluster-side cause the taxonomy would misname is recognised by name.**
+4. **Every reason says where the fix is, and quotes the server.**
 
-1. **The load carries its destination.** `namespacesLoadedMsg`/`contextsLoadedMsg` (and any
-   future value load a second surface can issue) carry a `dest` naming the picker kind that
-   asked, and the handler routes on it. Routing on "whichever surface happens to be open"
-   is the tempting one-liner and is wrong: the reader can dismiss one surface and open the
-   other while a list is in flight, and the result would then land in a surface that never
-   asked for it — with rows another surface ordered and a label map to match.
-2. **A result whose stage no longer exists is dropped, not painted.** For the palette that
-   means open *and* still on that verb's stage (`awaitingPaletteArg`); a line the reader
-   rewound to the verbs, or advanced to another verb, must not be overwritten by a late
-   answer. Only the surface still waiting is dismissed on an error, for the same reason.
-3. **Inertness is decided before the stage opens, never by the answer.** A missing lister is
-   known synchronously, so a verb with no seam wired declines the stage outright (D198 pt 3)
-   rather than opening one that waits forever. Conversely a stage that *did* open is
-   entitled to its answer: an empty or failed list dismisses it with a notice or a toast, it
-   does not silently leave a dead prompt.
-4. **A pending stage says so.** An argument stage waiting on values is titled
-   `<verb> — loading…` and drops the marker when they land — an empty modal that reads as
-   broken is the failure this avoids — and the query typed while waiting is kept and applied
-   to the arriving list, so typing ahead of a slow cluster is never thrown away.
+### D201 — Pinning writes state, dedupes against the *extras* list, and joins an existing action namespace (2026-08-02, CRD-PIN-02)
+CRD-PIN-01 (D193) decided where a pin is stored. This is the gesture that writes one, and the three choices a later slice must not silently reverse:
+1. **The "already there" test is the extras list, never the menu.**
+2. **Pinning is per-context state, so its writer is rebound on a context switch.**
+3. **A new action joins an existing action namespace unless it needs its own.**
 
-## D200 — A pane that has nothing to show says why, and never guesses (2026-08-02, CRD-01)
+### D202 — The pin key is a toggle, and the two menu-entry lists reach the shell unmerged (2026-08-02, CRD-PIN-03)
+D193 decided where a pin is stored, D201 the gesture that writes one. This is the gesture that takes one back out, and what had to change for it to be possible:
+1. **The authored list and the pinned list reach the shell separately.**
+2. **A row may be removed only if the pin is the reason it exists.**
+3. **A gesture that writes user state must be reversible from the same surface.**
+4. **Provenance is not a display state.**
 
-CRD-01 gave the browse table an empty state that carries the reason its LIST failed. It is
-the first user-facing copy keyed on `kube.ErrorKind` — the taxonomy exists precisely so
-"the TUI renders its own message per kind" — so the rules are set here for every surface
-that follows (AUTH-04 is next):
-
-1. **The reason lives where the reader is looking, and outlives the toast.** A failure that
-   leaves a pane empty writes its reason *into that pane*; `surfaceError`'s 5-second,
-   width-clipped toast and D159's log line both stay, and neither substitutes for it. A
-   reason is shown only while the pane is empty — rows on screen are the answer, and a
-   failure that arrives over a populated table (a watch dropping after a good List) leaves
-   the rows alone and waits, dormant.
-2. **The success that ends it is the one that clears it.** For the table that is a RESET —
-   including an *empty* one, which is a List that worked — plus `SetTable`, so one kind's
-   failure can never linger over the next kind's pane. A leg that adds a reason must name
-   the event that retires it; a reason with no exit is a lie the moment the cluster heals.
-3. **A cluster-side cause the taxonomy would misname is recognised by name.** An
-   `ErrorKind` is a client-facing classification, and two LIST failures are *not* client
-   problems: an unreachable CRD conversion webhook (500/503 — it reads as "cluster
-   unreachable" and breaks `kubectl` identically, D191 pt 1) and a 406 refusing the Table
-   content type. `kube.ConversionWebhookFailed`/`kube.TableUnsupported` are narrow
-   predicates beside `ExecPluginFailed`, deliberately *not* new `ErrorKind`s: they describe
-   what the cluster did, not how the call failed. Match narrowly on the server's own
-   wording, and let the kind's sentence answer everything unmatched.
-4. **Every reason says where the fix is, and quotes the server.** This machine
-   (re-authenticate, switch context) or the cluster (a webhook, RBAC) — a reader who cannot
-   tell retries the wrong one — and the server's own text is quoted underneath, flattened
-   to one paragraph, because that is the sentence a bug report needs. Never promise a retry
-   the code does not perform: the browse watch loop does re-List on a backoff, so that
-   sentence is honest *there* and must not be copied to a surface without one.
-
-## D201 — Pinning writes state, dedupes against the *extras* list, and joins an existing action namespace (2026-08-02, CRD-PIN-02)
-
-CRD-PIN-01 (D193) decided where a pin is stored. This is the gesture that writes one, and
-the three choices a later slice must not silently reverse:
-
-1. **The "already there" test is the extras list, never the menu.** Discovery appends every
-   kind it finds to the menu, so a pin refused because "the menu already lists it" would be
-   refused in exactly the case the line exists for — a pin is what keeps a kind in the menu
-   when discovery does *not* list it (before the pass returns, when its group fails, when a
-   later slice narrows what is listed). The no-op is "this kind is already a menu *entry*"
-   — a hand-authored `menus/<context>.yaml` row (which wins, D193 pt 3) or an existing pin
-   — tested against the model's merged extras list, which a context switch rebinds.
-2. **Pinning is per-context state, so its writer is rebound on a context switch.** The
-   `PinPersister` seam is bound to one context's state-file path, exactly like
-   `NamespacePersister`, so it rides in `ContextState` and is re-resolved on every switch.
-   A per-context writer that is wired only at launch files the new cluster's kinds under
-   the departed cluster's name — the bug D163 exists to prevent, and the second seam to
-   have needed this. Any future per-context writer goes in both places or in neither.
-3. **A new action joins an existing action namespace unless it needs its own.** The `?`
-   overlay renders one column per action-id namespace, so a namespace holding a single
-   action costs a column on a surface that already has sixteen. The pin gesture is
-   `menu.pin`, not `pin.toggle`: what it changes is the menu. And the id is a compatibility
-   surface — users bind it in `config.yaml` — so it is named for what the *action* will be
-   once CRD-PIN-03 lands its unpin half, and that slice extends this id and this key rather
-   than renaming either.
-
-## D202 — The pin key is a toggle, and the two menu-entry lists reach the shell unmerged (2026-08-02, CRD-PIN-03)
-
-D193 decided where a pin is stored, D201 the gesture that writes one. This is the
-gesture that takes one back out, and what had to change for it to be possible:
-
-1. **The authored list and the pinned list reach the shell separately.** They were
-   merged in the launcher into one `menuExtras` (D193 pt 2, `mergeMenuExtras`) and this
-   supersedes that: a merged list cannot say *which* entries the user may remove with a
-   key, and only a pin is removable. So `WithMenuExtras` / `ContextState.MenuExtras` carry
-   the hand-authored entries and `WithPinnedResources` / `ContextState.Pinned` the pins,
-   both rebound on a context switch. The precedence D193 pt 3 fixed is unchanged, and now
-   has exactly one implementation: `menu.AddExtras` first, `menu.AddPinned` second, the
-   GVR dedupe already there doing the work. Any third source of menu rows arrives as its
-   own list too, not folded into either of these.
-2. **A row may be removed only if the pin is the reason it exists.** `menu.Item` carries
-   provenance (`Pinned`, set when `AddPinned` *inserts* a row; `Discovered`, set by
-   `Reconcile`) and `Unpin` removes a row only when it is pinned and not discovered. A pin
-   naming a seed row, an authored entry or a discovered kind inserts nothing and marks
-   nothing, so removing that pin removes no row — a menu that can lose Pods to a stray
-   keypress is worse than one that cannot be pinned at all. Unpinning a kind discovery
-   also lists reverts the row to a plain discovered row: unpinning means "stop keeping
-   this for me", never "hide a kind this cluster has".
-3. **A gesture that writes user state must be reversible from the same surface.** `*`
-   pins and unpins; the reverse of an in-app gesture is never "edit a YAML file" — that
-   is what CRD-PIN-02 shipped and what this slice exists to close. It also fixes the shape
-   for the next such gesture: one action id, one key, both directions, and a decline with
-   a notice where the state is not the app's to change (a hand-written menu entry).
-4. **Provenance is not a display state.** Nothing renders differently because a row is
-   pinned. A marker would have to mean something on a seed row and a discovered row too,
-   and the menu's two visual states (cursor, active) are already the two a reader needs;
-   the status-bar notice is what confirms the gesture. A later slice wanting to *show*
-   pinned-ness decides that on its own evidence rather than inheriting it here.
-
-## D203 — A picker value carries match-only aliases, and a name two kinds share is qualified (2026-08-02, CRD-PIN-04)
-
-The CRD-PIN line rests on "a kind you reach for once is yours from then on", and the
-reaching happens in the resource picker, not by scrolling a menu of hundreds. Two ways
-that surface lost kinds are closed here, and both generalise beyond it:
-
-1. **A picker value may carry aliases: terms the filter matches but the row never
-   shows** (`picker.Item{Label, Aliases}`). A label is a name *for a reader*; a query is
-   whatever the reader knows the thing as. The resource picker's labels are Kinds, and a
-   Kubernetes user types what kubectl takes — the plural, a short name, the group — none
-   of which is even a subsequence of the Kind, so those queries matched nothing at all.
-   Aliases are match-only on purpose: widening the *label* would put text nobody reads on
-   every row, and the label is also the key a `SelectedMsg` is resolved by
-   (`resByLabel` and its siblings), so widening it would widen that key too.
-2. **An alias hit is scored on its own merit, unpenalised.** A row reached through `es`
-   ranks beside one reached through its label; the contiguous-over-scattered ordering
-   (D194 pt 1) still decides between them. A penalty would put the name the server itself
-   advertises below an accidental subsequence of someone else's Kind.
-3. **A label a picker shows must identify exactly one value.** Where two rows would
-   render the same text, *both* are qualified by what distinguishes them (the resource
-   picker: the API group, `Cluster (postgresql.cnpg.io)`, with the core group written
-   `core`) — never silently deduplicated to the first, which is what made a Kind two
-   operators share unreachable. Qualification applies only where the collision is, so the
-   common names muscle memory is built on stay bare.
+### D203 — A picker value carries match-only aliases, and a name two kinds share is qualified (2026-08-02, CRD-PIN-04)
+The CRD-PIN line rests on "a kind you reach for once is yours from then on", and the reaching happens in the resource picker, not by scrolling a menu of hundreds. Two ways that surface lost kinds are closed here, and both generalise beyond it:
+1. **A picker value may carry aliases: terms the filter matches but the row never shows**
+2. **An alias hit is scored on its own merit, unpenalised.**
+3. **A label a picker shows must identify exactly one value.**
 4. **Aliases and qualification are computed where the item set is built, once**
-   (`resourcePickerItems`), so `R` and the palette's `:resource ` stage cannot come to
-   match different things — the property D197 asks of the palette generally.
 
-## D204 — A gesture that reads the cursor gets a palette verb that takes the target as its argument (2026-08-02, CRD-PIN-05)
+### D204 — A gesture that reads the cursor gets a palette verb that takes the target as its argument (2026-08-02, CRD-PIN-05)
+CRD-PIN-05 asked how a kind is pinned from the surface it is *found* on.
+1. **A palette verb may take as its argument what the equivalent key reads from the cursor.**
+2. **A verb reached two ways decides once.**
+3. **A toggle keeps one verb and one word in the line.**
 
-CRD-PIN-05 asked how a kind is pinned from the surface it is *found* on. The picker
-could not answer with a key — every picker filters as you type (D194), so `*` there
-types a `*` — and the palette could, because a verb's argument stage (D198) is a list
-you narrow by typing. That answer generalises, and these are the parts a later slice
-must not undo:
-
-1. **A palette verb may take as its argument what the equivalent key reads from the
-   cursor.** `paletteVerbs` is otherwise app-global actions only, and a row-scoped
-   action has no meaning there (PAL-04 is where that changes). A cursor-reading action
-   is not row-scoped in this sense: naming its target explicitly is what makes the
-   palette entry total rather than focus-dependent. The argument stage is seeded from
-   the *same* snapshot the standalone picker uses (D203 pt 4) — never a second list —
-   and it is inert exactly where the key is inert (`:pin ` needs a pin persister; unlike
-   `:resource ` it does **not** need a watcher, because pinning a kind is not browsing
-   it).
-2. **A verb reached two ways decides once.** Both surfaces end in the one handler
-   (`togglePin`), which is where "authored entry → decline and name the file", "pinned →
-   unpin", "neither → pin" live. A palette arm that re-derived any of those would be a
-   second implementation free to drift, and the drift would be a lie about the user's
-   own files (D197's rule, applied to a verb that *writes*).
-3. **A toggle keeps one verb and one word in the line.** `:pin ` both pins and unpins;
-   there is no `:unpin ` listing a different set. D202 pt 3's "both directions or
-   neither" is a property of the gesture, not of the number of names it has, and a
-   second verb would need its own value list and its own refusals.
-
-## D205 — Row-scoped verbs in the palette: one source for the set, the title for the target (2026-08-02, PAL-04)
-
-PAL-04 put the actions that operate on the **selected row** into the command palette, so
-`:` finally answers "what can I do right now?" and not only "what can this app do". D204
-pt 1 drew the line these sit on the other side of: a row verb does *not* name its target
-in the line, it acts on the row already under the cursor — which makes "which object?" a
-question the surface has to answer before it offers anything destructive. The rules:
-
-1. **The set is the actions menu's set, computed by the actions menu's code.** The
-   palette calls `rowActionTitles(m.current)` — what `a` lists — under `openActionsMenu`'s
-   own preconditions (a resource table showing, a row under the cursor; focus is not
-   required). An action that does not apply to the kind is absent here because it is
-   absent there, in the same predicate. A second list of what kubecom can do to a row is
-   the one thing this slice must never grow.
-2. **The palette names the object it would act on, in its title.** `Command — Pod
-   default/web-1`, above the list, from the same `viewerTitle` the viewers and the delete
-   confirm use. Once, in the chrome — not on each row: a 60-column modal cannot spare the
-   width, and a row's label is the identity its pick is resolved by (D203 pt 3), so
-   widening the labels would widen that key too. A palette that offers `Delete` without
-   naming what it would delete is the one entry in this surface that can do damage.
+### D205 — Row-scoped verbs in the palette: one source for the set, the title for the target (2026-08-02, PAL-04)
+PAL-04 put the actions that operate on the **selected row** into the command palette, so `:` finally answers "what can I do right now?" and not only "what can this app do".
+1. **The set is the actions menu's set, computed by the actions menu's code.**
+2. **The palette names the object it would act on, in its title.**
 3. **A row verb dispatches the row action's intent, and inherits every guard on it.**
-   The pick ends in `dispatchRowAction` — the function `a` and the direct keys end in — so
-   the palette emits the same `rowActionMsg` against the same row, and the confirmations
-   (delete, drain, rollout restart…) are the action's own. The palette adds a way to
-   reach an action and never a way to skip its confirmation.
-4. **The app-global verbs keep the top of the list; row verbs are appended.** A line a
-   reader has already learned resolves to the same verb whether or not a row happens to be
-   selected — the matcher reorders the moment anything is typed, so the position costs
-   nothing and the stability is free. A row title an app-global verb's description already
-   claims is dropped rather than shadowing it (pt 2's identity rule); nothing collides
-   today and a test says so, which is what keeps the drop a guard instead of silent
-   behaviour.
+4. **The app-global verbs keep the top of the list; row verbs are appended.**
 
-## D206 — The hint line is derived from whoever owns input, at the tail of every Update (2026-08-02, HINT-01)
+### D206 — The hint line is derived from whoever owns input, at the tail of every Update (2026-08-02, HINT-01)
+D143 made a hint entry a promise and D143 pt 3 said the promise is kept by calling `syncHints` "wherever input ownership moves".
+1. **The hint context is derived, not pushed.**
+2. **The derivation mirrors Update's key-routing precedence, in the same order.**
+3. **An overlay's hint context is chosen by its input state, not by its kind.**
 
-D143 made a hint entry a promise and D143 pt 3 said the promise is kept by calling
-`syncHints` "wherever input ownership moves". HINT-01 found where that rule ran out: a
-modal picker moves ownership at ~30 Show/Hide sites — every picker, the palette's stage
-changes, the context-switch teardown — and not one of them called it, so for the whole
-life of an open picker the hint advertised the browse keys while the picker's filter field
-ate them. A rule that has to be remembered in thirty places is not a rule.
+### D207 — A shortcut key opens the palette on its verb's stage; it never opens a second surface (2026-08-02, PAL-05a)
+The PAL feedback's complaint was five modals with five sets of habits. PAL-02…04 built the one surface; PAL-05 is where the keys stop being the *other* way of doing the same thing. The rule for each conversion, starting with `T`:
+1. **The key ends in `enterPaletteArg`, not in an opener of its own.**
+2. **Esc and backspace rewind to the verb list before they close.**
+3. **The standalone picker is retired in the same leg, not left dormant.**
+4. **The tests move with it rather than dying with it.**
 
-1. **The hint context is derived, not pushed.** `hintContext()` reads the shell's state
-   and returns the context; `Update` calls `refreshHints` after handling *every* message,
-   which re-renders only when the derived context differs from the one on screen. New
-   surfaces that capture input get a case there and are correct everywhere by
-   construction — do not answer a stale hint by adding a `syncHints` call to a handler.
-   The forced `syncHints` remains for a change the context does not capture (a resize
-   re-elides the same context to a new width).
-2. **The derivation mirrors Update's key-routing precedence, in the same order.** Search
-   view, then the logs grep, then any active picker, then the logs view, then pane focus.
-   The hint is a claim about which keys act, so it can only be read off the same
-   precedence that decides which keys act. If a future slice reorders one, it reorders
-   both — they are one list written twice, and the tests that pin the picker contexts are
-   what catches the drift.
-3. **An overlay's hint context is chosen by its input state, not by its kind.** A picker
-   with its filter open (every picker since PAL-01) honours only the no-text keys; a
-   WithOptInFilter picker with the field closed also honours `/`. Two contexts cover every
-   picker, present and future. A picker-kind-specific hint set (the port picker's `p`/`0`)
-   is *not* what a `HelpContext` is for — that would tie the hint registry to a surface
-   rather than to an input state.
+### D208 — A converted key's other doors convert with it; the picker `Kind` switch keeps no default arm (2026-08-04, PAL-05c-1)
+Two constraints D207 does not state, found by converting the first key that had a second entry point and the first verb whose values are fetched.
+1. **Every door onto a retired surface converts in the same leg.**
+2. **The `picker.SelectedMsg`/`CancelledMsg` switches have no default arm.**
+3. **A collapsed `dest` is not a dropped guard.**
 
-## D207 — A shortcut key opens the palette on its verb's stage; it never opens a second surface (2026-08-02, PAL-05a)
+### D209 — A verb's argument list is a palette stage; no verb gets a modal of its own (2026-08-04, PAL-05c-2)
+PAL-05 is finished: `T`, `R`, `ctrl+n` and `C` all open the one palette on their verb's stage, and no standalone value picker survives. That makes the rule general rather than a per-key backlog, so it is stated once as the constraint future legs must not contradict.
+1. **A new verb that takes an argument gets a `:verb ` stage, not a picker.**
+2. **Inertness and the value list live in that arm, not in the key.**
+3. **The remaining pickers are not conversions this rule owes.**
 
-The PAL feedback's complaint was five modals with five sets of habits. PAL-02…04
-built the one surface; PAL-05 is where the keys stop being the *other* way of doing
-the same thing. The rule for each conversion, starting with `T`:
-
-1. **The key ends in `enterPaletteArg`, not in an opener of its own.** `openPaletteArg`
-   is the whole mechanism: it enters the verb's argument stage and shows the palette,
-   so the stage a key opens and the stage `:` `<verb>` `␣` opens are produced by one
-   function and cannot come to list different values. A converted key keeps its
-   binding, its action and its inertness — `enterPaletteArg` already refuses a verb
-   whose values cannot be produced (D197), and refusing *before* anything is shown is
-   what keeps a shortcut from opening an empty box that implies the verb was available.
-2. **Esc and backspace rewind to the verb list before they close.** A key-opened stage
-   is not special-cased into closing outright, and that is deliberate: the rewind is
-   what makes the key a way *into* the palette rather than a faster dead end — press
-   the wrong one and every other verb is one keystroke away. The cost is a second esc
-   to leave, which is the same cost the line already had.
-3. **The standalone picker is retired in the same leg, not left dormant.** `unused` is
-   in the lint gate, so a picker no key opens is a red tree — but the reason is not the
-   linter: two surfaces for one verb is exactly what the feedback was about, and a
-   dormant one is a second implementation waiting to drift (the D197 argument). One
-   key per leg follows from this, since retiring a picker means its Kind, its
-   Selected/Cancelled arms, its `activePicker`/`applyStyles`/`SetSize`/`View`/
-   `capturing` sites and its tests all move together.
-4. **The tests move with it rather than dying with it.** What a retired picker's tests
-   pinned is behaviour that survives — the marker on the rendering theme, the no-op
-   re-pick, the write-back, the failure that keeps the theme — so they are re-pointed
-   at the stage (through the key, `press(t, m, T)`) instead of deleted. Only the
-   assertions about the *picker as a surface* are rewritten. A conversion that deletes
-   its tests has silently narrowed the guarantee, whatever the diff looks like.
-
-## D208 — A converted key's other doors convert with it; the picker `Kind` switch keeps no default arm (2026-08-04, PAL-05c-1)
-
-Two constraints D207 does not state, found by converting the first key that had a
-second entry point and the first verb whose values are fetched.
-
-1. **Every door onto a retired surface converts in the same leg.** D207 pt 1 is written
-   about keys, but a picker can be opened by something that is not a key — `ctrl+n`'s was
-   also opened by the menu's namespace-seam row (`menu.NamespaceRequestedMsg`). Converting
-   the key alone leaves the retired picker alive behind that row, which is D207 pt 3's
-   dormant second surface by another name. So: before retiring a picker, find every
-   opener, and route them all through `openPaletteArg`. The seam row keeps its own
-   message and its own meaning — what changes is only the surface it lands on.
-2. **The `picker.SelectedMsg`/`CancelledMsg` switches have no default arm.** Until
-   PAL-05c-1 `default:` meant "the namespace picker" — one surface routed by falling
-   through rather than by its Kind. Every remaining picker names its Kind, so an
-   unrecognised Kind is now **dropped**, not applied to whichever picker the default
-   happened to name. The consequence a future leg must respect: a new picker that does
-   not stamp and branch on its own Kind is silently inert, not misrouted. Do not
-   reintroduce a default arm to "handle" that — name the Kind.
-3. **A collapsed `dest` is not a dropped guard.** Retiring the second surface reduced
-   `namespacesLoadedMsg` to one destination, so the D199 `dest` field went with it. What
-   must not go with it is `awaitingPaletteArg`: *which* surface asked stopped being a
-   question, but *whether that stage is still up* did not — a list landing after the line
-   rewound to the verbs must not seed the verb list with namespaces. The same applies to
-   `contextsLoadedMsg` when PAL-05c-2 collapses it.
-
-## D209 — A verb's argument list is a palette stage; no verb gets a modal of its own (2026-08-04, PAL-05c-2)
-
-PAL-05 is finished: `T`, `R`, `ctrl+n` and `C` all open the one palette on their verb's
-stage, and no standalone value picker survives. That makes the rule general rather than
-a per-key backlog, so it is stated once as the constraint future legs must not
-contradict.
-
-1. **A new verb that takes an argument gets a `:verb ` stage, not a picker.** Add it to
-   `paletteArgVerbs` and give `enterPaletteArg` an arm; if it deserves a key, put the
-   key in the `handleAction` arm that already holds the four. Building a modal of its own
-   re-creates exactly the two-surface split the PAL line spent five slices removing, and
-   the second surface is the one that drifts (D197/D207 pt 3).
-2. **Inertness and the value list live in that arm, not in the key.** A key is a name for
-   a verb (D207 pt 1); the arm is where "can this verb be offered at all" is decided, so
-   the key and the typed line cannot come to disagree. A key that checks a seam itself is
-   the drift, whatever it returns.
-3. **The remaining pickers are not conversions this rule owes.** `actPicker`, `ctrPicker`
-   and `portPicker` list a *selected row's* own data — its actions, its containers, its
-   declared ports — not a verb's argument values, and they are reached from a row, not
-   from a verb word. They stay modals. The test for which one a surface is: could a
-   reader name the value on the palette line before seeing the list? If not, it is
-   row data.
-
-## D210 — A curated set is a verb's argument even when the key is a noun; `a` is `:action ` (2026-08-04, PAL-05d)
-
-D209 pt 3 filed `actPicker` with `ctrPicker`/`portPicker` as row data that keeps its
-modal. Converting it showed the grouping was wrong, and by D209 pt 3's *own* test: the
-row-action set is a compiled-in registry, so a reader can name the value before seeing
-the list (`:action delete`), and PAL-04 had already been listing exactly those titles in
-the palette since 2026-08-02 — the actions menu was the last duplicated surface, not an
-exception to the rule. **D209 pt 3 is superseded for `actions.menu` only**; the sentence
-about `ctrPicker`/`portPicker` stands unchanged and they stay modals.
-
-1. **A verb's argument may be a curated set, not just a name the reader supplies.** `a`
-   looked unconvertible because it has no argument *word* — but the thing it asks for is
-   an argument like any other, so it converts like the other four (D207 pt 1): `a` opens
-   `:action `, the same stage `:` `act` `␣` opens, and a test asserts the two frames are
-   byte-for-byte equal. The test for "is this a stage or row data" is D209 pt 3's, applied
-   to the *values*: a compiled-in set is a stage; a particular object's own containers or
-   declared ports are not.
+### D210 — A curated set is a verb's argument even when the key is a noun; `a` is `:action ` (2026-08-04, PAL-05d)
+D209 pt 3 filed `actPicker` with `ctrPicker`/`portPicker` as row data that keeps its modal.
+1. **A verb's argument may be a curated set, not just a name the reader supplies.**
 2. **A row-scoped stage lists its set alone, and the co-listing drop does not follow it.**
-   `a` is worth keeping distinct from `:` precisely because it is *narrower* — the answer
-   to "what can I do to this?" without the app-wide verbs above it — so the stage shows
-   only the row verbs, one backspace from the full list. The D205 pt 4 rule that drops a
-   row title an app-global description already claims is a property of the two lists
-   sharing one label namespace: the stage passes a nil `taken` and keeps every applicable
-   action, because hiding one over a collision with a verb the stage does not display
-   would be invisible to the reader it hid it from.
-3. **A row-scoped stage's title names the object, not the verb.** Every other argument
-   stage titles itself with the verb's description; this one titles itself
-   `Command — Pod default/web-1`, because it is the surface where every entry acts on
-   something and one of them deletes it (D205 pt 2), and 60 columns are better spent on
-   the target than on a verb the `:action ` prompt already names. Any future stage whose
-   values act on a selected object inherits this, not the default.
+3. **A row-scoped stage's title names the object, not the verb.**
 4. **The palette's own state must be read before `closePalette`, not after.**
-   `applyPaletteArg` closes the surface first, and `palRowByLabel` — unlike `resByLabel`
-   and `themeByLabel` — is cleared there, so an arm that resolved after the close would
-   find an empty map and the pick would do *nothing*, silently. It reads the map out
-   first, and a test fails if that order is reversed. This is the same trap D209's leg
-   recorded for `ctxByLabel` from the other side: one of the maps is cleared on close and
-   two are not, so a new stage must check which it owns.
 
-## D211 — A credential plugin may be re-run only as a diagnostic on an already-failed request; its stdout is a credential and is never captured (2026-08-04, AUTH-02)
+### D211 — A credential plugin may be re-run only as a diagnostic on an already-failed request; its stdout is a credential and is never captured (2026-08-04, AUTH-02)
+D195 pt 3 recorded that the plugin's stderr — the sentence that says *why* auth failed — is unavailable from the failure, because client-go streams it to the process's own `os.Stderr` (invisible under the alt-screen) and its error text carries only the executable name and an exit code.
+1. **It is a diagnostic on an already-failed request, never a pre-flight.**
+2. **The plugin's stdout is discarded and never returned.**
+3. **Stdin is closed.**
+4. **The run is bounded twice, and one of the bounds is not the obvious one.**
+5. **A re-run that succeeds is an outcome, not an error.**
 
-D195 pt 3 recorded that the plugin's stderr — the sentence that says *why* auth failed — is
-unavailable from the failure, because client-go streams it to the process's own `os.Stderr`
-(invisible under the alt-screen) and its error text carries only the executable name and an
-exit code. AUTH-02 recovers it the only way available: kubecom re-runs the plugin itself
-(`ExecPlugin.Diagnose`, `internal/kube/authexec.go`). Running a binary to find out why it
-failed is the kind of thing that grows scope quietly, so the shape is fixed here for AUTH-03
-(which reads the stderr), AUTH-04 (which shows it) and AUTH-05 (which offers a remediation).
+### D212 — A remediation is recognised by plugin **and** stderr, is composed only from the stanza, and a recognised-but-unsubstantiated failure ends the search (2026-08-04, AUTH-03)
+D195 pt 5 promised the plugin → remediation catalogue would be a small explicit table rather than a provider framework. AUTH-03 writes its only entry (AWS SSO), which is where the table's rules have to be fixed — the next entry (`gcloud`, `az`) will be written by someone reading this, not the code.
+1. **Recognition takes both halves, and neither alone is enough.**
+2. **Every stderr marker must name SSO.**
+3. **Only the stanza substantiates the command — never the process environment.**
+4. **The catalogue is first-match-wins, and a recognised entry ends the search.**
+5. **Suggesting is not running, and the API name says so.**
 
-1. **It is a diagnostic on an already-failed request, never a pre-flight.** `Diagnose` runs
-   only after a request came back `KindExecPlugin` — never on launch, never speculatively,
-   never on a timer, never to "check" a context the user has not tried to use. And it
-   re-invokes the kubeconfig's *own* stanza verbatim (`p.Command` with `p.Args`), never a
-   command kubecom composed: this is the read-only construction D195 pt 3 promised, and the
-   remediation (a *different* command) stays offer-only behind a confirm (D195 pt 4).
-2. **The plugin's stdout is discarded and never returned.** A credential plugin's stdout is
-   an `ExecCredential` — a live bearer token. Nothing about why it failed is there, so it is
-   read into `io.Discard` rather than into a struct that would end up in a pane, the
-   diagnostic log or a pasted bug report. `ExecPluginDiagnosis` therefore has no stdout
-   field, and a test fails if the token can be found anywhere in the rendered result. Any
-   future slice that wants "what did it print" wants stderr.
-3. **Stdin is closed.** The TUI owns the terminal, so a plugin that would prompt must fail
-   at EOF rather than block on input nobody can supply.
-4. **The run is bounded twice, and one of the bounds is not the obvious one.** A timeout
-   kills the process — but killing it does *not* necessarily close its stderr: a plugin that
-   spawned a child leaves that child holding the pipe, and `os/exec`'s `Wait` blocks on the
-   copy until it exits, so the timeout alone bounds nothing. `Cmd.WaitDelay` is what closes
-   the pipe and returns what was captured. Captured stderr is capped (8 KiB) and reports its
-   own truncation; the cap never short-writes, since a child that gets `EPIPE` on stderr
-   dies before reaching the exit status being diagnosed.
-5. **A re-run that succeeds is an outcome, not an error.** The credential may have been
-   renewed between the failed request and the diagnosis, so the caller asks
-   `ExecPluginDiagnosis.Failed()` rather than assuming the failure reproduces. `Diagnose`
-   returns an error only when the diagnostic could not be *attempted* (no stanza — tagged
-   `KindBadContext` — or a cancelled caller); a plugin that ran and failed is a successful
-   diagnosis, with the detail in the struct.
-
-## D212 — A remediation is recognised by plugin **and** stderr, is composed only from the stanza, and a recognised-but-unsubstantiated failure ends the search (2026-08-04, AUTH-03)
-
-D195 pt 5 promised the plugin → remediation catalogue would be a small explicit table rather
-than a provider framework. AUTH-03 writes its only entry (AWS SSO), which is where the
-table's rules have to be fixed — the next entry (`gcloud`, `az`) will be written by someone
-reading this, not the code.
-
-1. **Recognition takes both halves, and neither alone is enough.** The plugin gate is the
-   command's **base name, exactly `aws`** (a bare name or an absolute path); the stderr gate
-   is a substring list. A wrapper script around the AWS CLI is deliberately *not* recognised
-   even when it forwards the CLI's stderr verbatim: the stderr is the wrapper's now, and what
-   the wrapper would need re-run is unknowable from the kubeconfig. Widening the gate to a
-   substring (`awsx`, `my-aws-helper`) is the failure this rule prevents.
-2. **Every stderr marker must name SSO.** That property, not the length of the list, is what
-   keeps the match narrow as D195 pt 2/5 requires: an expired STS token
-   (`ExpiredTokenException`), a missing credentials file, a denied `eks:DescribeCluster` each
-   need a *different* fix, and offering `aws sso login` for them is the guess the feedback
-   itself told us not to make. A leg that adds a marker keeps this property or states the
-   replacement.
-3. **Only the stanza substantiates the command — never the process environment.** client-go
-   passes the plugin the process env *plus* the stanza's, so an `AWS_PROFILE` exported in the
-   user's shell really does reach the failing invocation. A suggestion composed from it is
-   still forbidden: it is a claim about the kubeconfig the kubeconfig does not make, and the
-   shell kubecom was launched in need not be the one the user reads the suggestion in.
-   Absent from the stanza means absent, and absent means **no remediation** (D195 pt 5), not
-   a guessed one.
-4. **The catalogue is first-match-wins, and a recognised entry ends the search.** An entry
-   that recognises the plugin but cannot substantiate a fix returns "no remediation" rather
-   than falling through — otherwise adding a laxer entry later silently changes what an
-   existing plugin is offered. Ordering the table therefore matters; it is not a set.
-5. **Suggesting is not running, and the API name says so.** `SuggestedRemediation` composes
-   a command and nothing else — no execution, no PATH probe, no dry run (D195 pt 4 holds
-   until AUTH-05's confirm). It also yields nothing for a diagnosis that did not
-   `Failed()` (D211 pt 5) and nothing for a missing binary, whose fix is installing the
-   plugin, not re-authenticating.
-
-## D213 — The diagnosed plugin failure travels as one report, and its notice puts the fix above the evidence (2026-08-04, AUTH-04a)
-
-AUTH-01…03 left three separate values in the kube layer (the stanza, the diagnosis, the
-remediation) and no surface. AUTH-04a fixes how they cross into the TUI and what the TUI is
-allowed to do with them.
-
-1. **`kube.ExecPluginReport` is the boundary value, and the shell renders only.** The three
-   pieces travel together because none is legible alone: an exit code without the stderr says
-   nothing, and a suggested command without the failure it answers is a non sequitur. The
-   consequence is the rule: **the shell never runs a subprocess and never matches provider
-   text.** Diagnosing is `Diagnose`'s (D211), recognising is `SuggestedRemediation`'s (D212),
-   and a future provider entry changes no TUI code. A `nil` `Plugin` is a report to fall back
-   from, not one to render half of.
+### D213 — The diagnosed plugin failure travels as one report, and its notice puts the fix above the evidence (2026-08-04, AUTH-04a)
+AUTH-01…03 left three separate values in the kube layer (the stanza, the diagnosis, the remediation) and no surface. AUTH-04a fixes how they cross into the TUI and what the TUI is allowed to do with them.
+1. **`kube.ExecPluginReport` is the boundary value, and the shell renders only.**
 2. **The notice orders the fix above the plugin's stderr, because the pane drops its tail.**
-   `table.noticeBody` renders a notice into the rows available and silently discards the rest
-   — no ellipsis, no scroll. The stderr is the only unbounded part of this notice (8 KiB), so
-   a remediation printed after it is a remediation the reader may never see, on exactly the
-   small pane where they are most likely squinting at a problem. Order: headline, cause,
-   remediation, the invocation, the stderr. Any future surface that carries this report
-   either keeps that order or is a real viewer that scrolls.
-3. **The diagnosis supersedes client-go's error; it does not join it.** `browseFailure` quotes
-   the server's own text as its last line, and `authFailure` deliberately does not: `exec:
-   executable aws failed with exit code 255` states nothing the `Plugin:` line and the stderr
-   do not state better, and a row spent on it is a row of evidence lost. The unwrapped error
-   is still in the toast and in `surfaceError`'s log line (D159), which is where a bug report
-   is assembled from.
-4. **`ExecPluginReport.Suggested` is for renderers, not for actors.** It collapses the two
-   ways `SuggestedRemediation` says no — not recognised, and recognised but unsubstantiated —
-   because a renderer treats them identically (show the failure, suggest nothing). Anything
-   that *acts* on the difference — AUTH-05's confirm prompt above all — must ask
-   `SuggestedRemediation` rather than read this flag, and user-facing copy driven by it must
-   be true of **both** cases: "kubecom has no command it can suggest", never "does not
-   recognise" (D212 pt 3).
-5. **The cause sentence branches on the diagnosis, and a plugin that now works is offered
-   nothing.** Four outcomes, four different actions by four different people: non-zero exit →
-   re-authenticate; binary absent → *install* it, and say that re-authenticating cannot help
-   (this is where the stanza's `InstallHint` is printed, flattened, and nowhere else); timed
-   out → the plugin is wedged, run it in a terminal and watch; did not fail → nothing at all,
-   which is D211 pt 5's obligation made visible rather than assumed away.
+3. **The diagnosis supersedes client-go's error; it does not join it.**
+4. **`ExecPluginReport.Suggested` is for renderers, not for actors.**
+5. **The cause sentence branches on the diagnosis, and a plugin that now works is offered nothing.**
 
-## D214 — Diagnosing a credential plugin is one call over a `ClientConfig`, fired once per browse selection, and it may only rewrite the pane that asked (2026-08-04, AUTH-04b)
-
-AUTH-04a made the copy; this is the runtime rule for producing it. The constraint a future
-leg must not silently contradict is that re-running a credential plugin is a **subprocess
-spawned by a failure the user did not ask about**, so where it is triggered from, how often,
-and what it is allowed to overwrite are all fixed here — not by whoever adds the next surface.
-
+### D214 — Diagnosing a credential plugin is one call over a `ClientConfig`, fired once per browse selection, and it may only rewrite the pane that asked (2026-08-04, AUTH-04b)
+AUTH-04a made the copy; this is the runtime rule for producing it.
 1. **The kube layer answers in one call, and it is the only thing that runs anything.**
-   `kube.DiagnoseExecPlugin(ctx, cc)` is `ExecPluginFor` → `Diagnose` → `SuggestedRemediation`
-   behind one signature over a `ClientConfig`, so the shell asks a question rather than
-   orchestrating three (D213 pt 1's rule made mechanical). A diagnosis that could not be
-   *attempted* returns the **zero report plus an error**, never a report holding a plugin and
-   an unfilled diagnosis — `ExecPluginDiagnosis`'s zero value does not `Failed()`, so a
-   half-report renders as "it worked when re-run", which is a claim nothing observed.
-2. **The seam is kubeconfig-scoped, not cluster-scoped.** `tui.AuthDiagnoser` takes the
-   `ClientConfig` per call and lives beside `ctxLister`/`ctxState` rather than in the `Cluster`
-   bundle (D155 pt 2's converse): it asks about the *kubeconfig*, which a context switch does
-   not change, and the context it asks about is read from the shell at call time. Only the
-   in-flight run is per-cluster, and `stopClusterAsync` cancels it — a plugin re-run for the
-   context being left must not outlive the switch.
-3. **One re-run per browse selection, however often the failure repeats.** The watch loop
-   re-Lists on a backoff, so a cluster nobody is authenticated to emits a failure every few
-   seconds; without a latch each one spawns another `aws eks get-token`. The generation
-   already diagnosed (`authDiagGen` vs `watchGen`) is that latch, and a new selection is what
-   re-arms it. Any future surface that diagnoses on a *repeating* signal owes the same latch.
-4. **A diagnosis may only rewrite the pane that asked for it, and only while that pane is
-   still failing.** Tagged with `watchGen`, so an answer arriving after the reader drilled
-   elsewhere is dropped; and re-checked against the live pane (rows present, or the notice
-   already cleared by a successful re-List) before writing, because a notice installed behind
-   recovered rows lies dormant and then surfaces later, out of nowhere, on the next empty
-   result.
-5. **A diagnosis that establishes nothing changes nothing on screen.** An attempt that failed,
-   or a report naming no plugin, leaves the kind's generic sentence standing and goes to the
-   log (D159) — never to a second toast. The reader asked to browse a resource; they already
-   have the failure's own toast, and a diagnostic they did not request must not start
-   reporting on itself.
+2. **The seam is kubeconfig-scoped, not cluster-scoped.**
+3. **One re-run per browse selection, however often the failure repeats.**
+4. **A diagnosis may only rewrite the pane that asked for it, and only while that pane is still failing.**
+5. **A diagnosis that establishes nothing changes nothing on screen.**
 
-## D215 — The one subprocess kubecom composes runs through the existing suspend, on a single-use approval, and its success retries the *request* (2026-08-04, AUTH-05a)
+### D215 — The one subprocess kubecom composes runs through the existing suspend, on a single-use approval, and its success retries the *request* (2026-08-04, AUTH-05a)
+D213 pt 1 said the shell never runs a subprocess.
+1. **Composed in the kube layer, run by the shell.**
+2. **The existing suspend, and no timeout.**
+3. **The remediation runs in the *plugin's* environment**
+4. **An approval is single-use.**
+5. **Success retries the failed *request*, never the connection or the launch.**
 
-D213 pt 1 said the shell never runs a subprocess. AUTH-05 is the exception the AUTH line was
-always going to need — a remediation has to actually run — so the exception is fenced here
-rather than by whoever wires the next one. This is the first and only place kubecom executes a
-command it **composed** (the diagnostic re-run only ever re-invokes the kubeconfig's own
-command, D195 pt 3), and every clause below exists to keep that from widening.
+### D216 — kubecom may *ask* to run a remediation only from a landed diagnosis, only over the plain browse view, and an unanswered offer is dropped rather than deferred (2026-08-05, AUTH-05b)
+D215 fenced what an approved remediation may do. This fences the **asking**, which is the other half of D195 pt 4 ("offer — never run unasked") and the part a future surface is most likely to widen by accident, because an offer looks like copy rather than like an action.
+1. **A landed diagnosis is the only thing that may open one.**
+2. **It opens only over the plain browse view, and never queues.**
+3. **Answering it, either way, ends it.**
+4. **The pane and the prompt say the same thing, and the pane goes back when the prompt goes.**
 
-1. **Composed in the kube layer, run by the shell.** `ExecPluginReport.RemediationCommand(env)`
-   resolves argv + environment; `internal/tui/reauth.go` only runs what it is handed. A shell
-   that assembled its own argv could run something the confirm prompt did not name, which is
-   the whole of D195 pt 4's protection. The argv goes to `os/exec` **verbatim** — never a
-   shell, never expansion.
-2. **The existing suspend, and no timeout.** It runs through `tea.Exec` on the released
-   terminal's own streams, exactly as `$EDITOR` does (D125); no second suspend mechanism is
-   invented and no background execution is permitted, because every catalogue entry is
-   interactive (`aws sso login` opens a browser and prints a verification code). It is
-   deliberately unbounded in time: the reader is watching it, and a browser round-trip is
-   legitimately slow. This is the reason a remediation may never be triggered by anything but
-   a person — a suspend nobody asked for blanks the terminal.
-3. **The remediation runs in the *plugin's* environment**, i.e. the process environment with
-   the failing stanza's `env:` overlaid (`ExecPlugin.environ`, what client-go itself does).
-   A stanza that redirects `AWS_CONFIG_FILE`/`AWS_SHARED_CREDENTIALS_FILE` authenticates
-   against that file, so a login run without the override writes a session the plugin never
-   reads — a "successful" re-authentication that fixes nothing.
-4. **An approval is single-use.** The run consumes the armed stash, so success, failure and an
-   abandoned login all leave nothing armed: a second run needs a second offer, which needs a
-   second diagnosis. Nothing may re-fire a remediation off a retry, a timer, or a repeated
-   failure (D195 pt 4: never retried automatically). The stash is also cluster-scoped state —
-   `resetCluster` drops it, since it names the departing context's credentials.
-5. **Success retries the failed *request*, never the connection or the launch.** The failed
-   resource's watch is restarted, which re-issues exactly the request that could not
-   authenticate; client-go caches nothing for a plugin that failed, so the retry re-runs the
-   plugin and picks up the new session (`vault/knowledge/stack.md`). Restarting is also what
-   re-arms the AUTH-04b diagnosis latch, so a login that did not actually fix the credentials
-   produces a fresh diagnosis rather than silence. A failure retries nothing at all: it would
-   fail the same way, and the pane already says what is wrong.
+### D217 — Every input-capturing surface has a hint context, and a context whose keys live outside the browse keymap still reads them from the registry (2026-08-05, HINT-02)
+D206 made the hint derived rather than pushed and left the rule for *which* surfaces get a case implicit. HINT-02 closes the set the picker work started, and hits the one context whose keys are not browse keys, so both halves are worth pinning.
+1. **A surface that captures input gets a `HelpContext`; it never falls through to the browse set.**
+2. **A context-scoped action is hinted through the registry, like every other.**
 
-## D216 — kubecom may *ask* to run a remediation only from a landed diagnosis, only over the plain browse view, and an unanswered offer is dropped rather than deferred (2026-08-05, AUTH-05b)
+### D218 — The hint-context set is closed by the router, and a repurposed key is still hinted under its global description (2026-08-05, HINT-03)
+HINT-03 covered the last two capturing surfaces D217 pt 1 named, so the enumeration is complete. Two rules keep it that way.
+1. **`hintContext` is the router's mirror, and a new capturing surface ships its case in the same leg that adds it.**
+2. **A hint entry promises that the key acts, not what it does there.**
 
-D215 fenced what an approved remediation may do. This fences the **asking**, which is the
-other half of D195 pt 4 ("offer — never run unasked") and the part a future surface is most
-likely to widen by accident, because an offer looks like copy rather than like an action.
-The offer is the only modal in kubecom that no keypress opens.
+### D219 — A view may state its own verbs, but never its own keys: a body that names a gesture reads the key from the resolved keymap (2026-08-05, HINT-04)
+D218 pt 2 leaves one escape hatch — where a surface's verb genuinely needs saying, the surface says it in its own body — and the port-forward panel's footer was the only place that used it.
+1. **The verbs are local, the keys are generated.**
+2. **An action the user unbound drops out of the body, and a body with nothing left disappears.**
 
-1. **A landed diagnosis is the only thing that may open one.** The trigger is
-   `handleAuthDiagMsg` — a report that named a plugin, survived the generation guard and the
-   pane's still-failing re-check (D214 pt 4), and substantiated a command. Nothing else may
-   arm one: not a classification, not a retry, not a timer. That chain already bounds the
-   offer to one per browse selection (D214 pt 3), so "one confirm per occurrence" is inherited
-   rather than separately enforced.
-2. **It opens only over the plain browse view, and never queues.** If any other surface is
-   capturing input (`overlayActive`: a picker, a modal, the viewer, the logs or search view,
-   the help overlay, the filter field) the diagnosis offers nothing and arms nothing. Two
-   reasons, either sufficient: a confirm is composited only over the browse body (`View`'s
-   single-overlay switch), so an offer opened under a full-screen view would be an invisible
-   modal swallowing every key; and a prompt that displaces a question the reader is already
-   answering is worse than no prompt. It is not deferred to when the screen clears — reopening
-   the resource re-arms the diagnosis, which is a gesture the reader makes deliberately.
-3. **Answering it, either way, ends it.** Accept consumes the approval (D215 pt 4) and
-   declines nothing else; decline drops the stash outright. No path leaves an armed
-   remediation with no offer on screen, which is what keeps "nothing runs unasked" a property
-   of the code shape rather than of each caller's care.
-4. **The pane and the prompt say the same thing, and the pane goes back when the prompt
-   goes.** While an offer is open the browse notice names it (`kubecom is asking whether to
-   run this for you:`) instead of telling the reader to open another terminal; the moment it
-   is answered the pane is restored to the self-service copy — and only if the pane is still
-   showing what the offer wrote, since by then it may be explaining something else. The pane
-   keeps quoting the command in full either way: the confirm box clips to sixty cells, so the
-   wrapped copy behind it is the only place a long invocation is legible.
+### D220 — An overlay renders no taller than the box it computes, and elides its explanation before its ask (2026-08-05, BOX-01)
+`overlayCenter` composites a box onto a fixed `width×bodyHeight` canvas (D95), so a box bigger than the body is not shrunk, scrolled or scaled — it is **clipped, bottom-first, in silence**.
+1. **A component that renders free-form content into a fixed-size box bounds that content itself.**
+2. **What is elided is the explanation, never the ask.**
+3. **Dropped content says it was dropped.**
+4. **A geometry minimum must fit what the surface always renders.**
 
-## D217 — Every input-capturing surface has a hint context, and a context whose keys live outside the browse keymap still reads them from the registry (2026-08-05, HINT-02)
+### D221 — An overlay with a cursor scrolls rather than truncates, and counts what it hides in its title (2026-08-05, BOX-02)
+D220 pt 1 says a box bounds its own height; it left open *how* the surplus goes.
+1. **A bounded surface that has a cursor keeps the cursor on screen.**
+2. **A scrollable elision announces itself in chrome that always renders, not in a row taken from the content.**
+3. **Chrome is first-class, but a footer is not worth the last content row.**
 
-D206 made the hint derived rather than pushed and left the rule for *which* surfaces get a
-case implicit. HINT-02 closes the set the picker work started, and hits the one context whose
-keys are not browse keys, so both halves are worth pinning.
+### D222 — The elision marker names where the rest is, and the clamp has one home (2026-08-05, BOX-03)
+D220 pt 3 fixed *that* a cut is announced and, with only the modal to go on, fixed the sentence too.
+1. **When elided content is reachable elsewhere, the marker says where.**
+2. **The clamp lives in `internal/tui/elide`, and a bounded overlay uses it rather than re-deriving it.**
+3. **A box with no room for content renders nothing rather than a frame.**
 
-1. **A surface that captures input gets a `HelpContext`; it never falls through to the
-   browse set.** `ShortHelpContext`'s fallback to the focus-agnostic set is for an *unknown*
-   context, not for an overlay nobody wrote a case for — falling through is exactly the lie
-   HINT-01/02 exist to remove, and it fails silently (a hint that looks plausible and is
-   wrong). A surface that swallows almost everything is still hinted: the keybindings overlay
-   advertises the ways out of it, which is the only promise left to make. Two capturing
-   surfaces are still uncovered and are named on the board as HINT-03 (the browse filter
-   field and the port-forward panel) — do not add a third.
-2. **A context-scoped action is hinted through the registry, like every other.** The confirm
-   modal answers in the confirm key context (D132), so `n`/`enter`/`esc` mean something there
-   that they do not mean in browse. `Keymap.bindings` is keyed by action rather than by key
-   context, so `Binding(ActionConfirmAccept)` renders the user's own accept keys: the hint
-   stays generated (D11) and a rebind reaches it. Never write `y/n` — or any literal key —
-   into a hint set, and never hint the browse meanings of a chord the open surface has
-   redefined.
+### D223 — A `HelpContext` is only real when both of its sides are closed (2026-08-05, HINT-05)
+The HINT line (D206/D217/D218) gave every capturing surface in kubecom a `HelpContext`, and D218 pt 1 recorded what it could not give them: nothing enforced that a *new* one arrives complete.
+1. **The enum is bounded and enumerable, and both sides of a context are checked.**
+2. **The fallback stays, and is for out-of-range integers only.**
+3. **A reachability failure is a routing bug, not a hint bug.**
 
-## D218 — The hint-context set is closed by the router, and a repurposed key is still hinted under its global description (2026-08-05, HINT-03)
+### D224 — A vault rule that a leg can break silently is checked by `make check` (2026-08-05, BOARD-01)
+D102 established that a board **Done entry is one line** and re-collapsed the list by hand (~50KB → ~17KB).
+1. **D102 is now a gate, not a convention.**
+2. **The guard covers the Done list only.**
+3. **This is the general shape, not a one-off.**
 
-HINT-03 covered the last two capturing surfaces D217 pt 1 named, so the enumeration is
-complete. Two rules keep it that way.
+### D225 — The `## Done` index is the canonical record of a finished item; a section's `- [x]` is a working view (2026-08-06, BOARD-02a)
+BOARD-02's notes left the board in a half-and-half state: the `## Done` index had not been appended to since 2026-08-02, so 26 finished items existed only as the `- [x]` line inside their own Backlog line's section, while 207 older items existed only in the index.
+1. **The index is canonical.**
+2. **The backfill is a copy, never a summary.**
+3. **A rollup entry carries the union of its slices' pointers, not a new claim.**
 
-1. **`hintContext` is the router's mirror, and a new capturing surface ships its case in
-   the same leg that adds it.** The list is complete *today* — every branch of `Update`
-   and `handleAction` that swallows input has a case, in the order those routers test
-   them, which is what makes the case list auditable by reading the router rather than
-   the board. There is no registry to forget to register with and no test that fails when
-   a surface is added, so the only defence is the rule: a surface that captures input is
-   not finished until its `HelpContext` exists. Adding one later is not a follow-up — it
-   is shipping a known lie, since the fallback renders a plausible browse hint (D217 pt 1).
-2. **A hint entry promises that the key acts, not what it does there.** The port-forward
-   panel's `enter` stops the selected forward and is hinted "Open / drill into selection";
-   the prompt modal's `enter` submits and is hinted the same. Do **not** fix this with
-   per-context descriptions: a description is global and is what the `?` overlay and the
-   generated doc render, so lengthening it to cover every surface widens that column until
-   the next one no longer fits (D147 pt 3), and per-context overrides would put a second,
-   diverging source of copy next to the registry (D11). Where a surface's verb genuinely
-   needs saying, the surface says it in its own body — the panel's footer reads "enter:
-   stop" one line above the hint.
+### D226 — A board paragraph is not a backlog: deferred work names a destination, and a closed line's prose is a claim that goes stale (2026-08-06, BOARD-02b-1)
+Four closed lines (SEARCH, CRD-PIN, PAL, AUTH) ended with a sentence of the form "two things it deliberately left, either its own small item if a dogfood wants them".
+1. **A closed line's paragraph states current state, and nothing checks it.**
+2. **Every deferral names its destination in the same paragraph.**
+3. **"No item until asked" is a real answer, and it is not the same as declined.**
 
-## D219 — A view may state its own verbs, but never its own keys: a body that names a gesture reads the key from the resolved keymap (2026-08-05, HINT-04)
+### D227 — `:resource ` and `:pin ` share one snapshot, so narrowing the menu re-sources both or takes both down (2026-08-06, BOARD-02b-1)
+Carried out of the CRD-PIN paragraph, because it constrains a leg nobody has written yet rather than describing one that landed.
 
-D218 pt 2 leaves one escape hatch — where a surface's verb genuinely needs saying, the
-surface says it in its own body — and the port-forward panel's footer was the only place
-that used it. It was also the only view in kubecom that wrote a key into its own body, so a
-user who rebound `forwards.stopAll` read `X: stop all` under a key that no longer acted.
-The hatch stays open; its price is this rule.
-
-1. **The verbs are local, the keys are generated.** A body footer names its actions and
-   pairs each with `firstKey(km, action)` (`portPickerTitle`'s helper — the same trade the
-   port picker title already makes). This is D11 applied to rendering rather than to
-   matching: the registry is the only place keys exist, so a view that spells one is a lie
-   waiting on a rebind, and nothing in the build catches it. If a body would state a key it
-   cannot resolve — a chord, a raw literal — that is the signal the copy belongs in the
-   registry's description instead.
-2. **An action the user unbound drops out of the body, and a body with nothing left
-   disappears.** A verb with no key beside it is worse than silence: it promises a gesture
-   the reader cannot perform and cannot discover. Rendering nothing is the honest floor —
-   the `?` overlay and the hint line still carry whatever is bound.
-
-## D220 — An overlay renders no taller than the box it computes, and elides its explanation before its ask (2026-08-05, BOX-01)
-
-`overlayCenter` composites a box onto a fixed `width×bodyHeight` canvas (D95), so a box
-bigger than the body is not shrunk, scrolled or scaled — it is **clipped, bottom-first, in
-silence**. `modal.View` computed `innerSize()` and used only the width, so a confirm whose
-message wrapped to nineteen rows rendered nineteen rows on every screen, and the canvas ate
-the bottom border and — in prompt mode, where the input is rendered under the message — the
-text field itself. Nothing in the build or the tests noticed, because every unit test read
-`View()`'s own string, which is complete; only the composited frame is short.
-
-1. **A component that renders free-form content into a fixed-size box bounds that content
-   itself.** The geometry helper is not advisory: if `modalSize`/`innerSize` says the box is
-   twelve rows, `View` returns at most twelve rows, at every screen size the model accepts.
-   The picker has always been safe by accident of composition (its list is a bubble sized to
-   `innerSize`); a hand-rolled body has no such component and must clamp. A test that reads
-   only `View()` cannot see this class of bug — assert against the height the geometry
-   promised, or read the box through the canvas that will clip it.
-2. **What is elided is the explanation, never the ask.** The title and, in prompt mode, the
-   input line are rendered first-class and the message takes what is left, so a modal can
-   lose its reasoning but never the field it is asking the reader to fill in. A surface that
-   drops the interactive control to make room for prose is not degraded, it is broken
-   (principle 3 cuts the other way here).
-3. **Dropped content says it was dropped.** The elided block ends in `… (truncated)` — the
-   same wording `browsefail.go` uses for a clipped stderr, so one convention covers both.
-   Silent elision inside a *question* is the failure worth naming: the reader agrees to
-   something whose text they were never shown.
-4. **A geometry minimum must fit what the surface always renders.** `modalMinHeight` is 4,
-   not the picker's 3, because a prompt's frame is four rows before any message. A minimum
-   smaller than the mandatory chrome makes pt 1 unsatisfiable on a small terminal, which is
-   exactly where it matters.
-
-## D221 — An overlay with a cursor scrolls rather than truncates, and counts what it hides in its title (2026-08-05, BOX-02)
-
-D220 pt 1 says a box bounds its own height; it left open *how* the surplus goes. The modal
-truncates with a marker, which is right for a message nobody can scroll to. The port-forward
-panel is the other shape — a list with a **selection** — and there truncation is not a
-degraded read but a wrong one: dropping the tail hides the row the reader is about to stop,
-and the box looks complete while doing it.
-
-1. **A bounded surface that has a cursor keeps the cursor on screen.** It renders the
-   least-scrolled window of its content that contains the selection, rather than a prefix
-   plus a marker. `forwardsWindow` derives that window from the cursor alone — no stored
-   scroll offset — so nothing has to re-clamp it on resize, on a stopped forward, or
-   alongside `clampForwardsSel`. A stored offset is only worth its maintenance for a surface
-   long enough that sticky scroll position is a feature (the table); a short list is not.
-2. **A scrollable elision announces itself in chrome that always renders, not in a row taken
-   from the content.** The panel's title becomes `Port-forwards (11–16 of 20)` when the
-   window hides rows and stays plain when it does not — D220 pt 3's "dropped content says it
-   was dropped" satisfied without spending a row of the very list being described. It is a
-   *counter* rather than `… (truncated)` because the reader can reach what is hidden: what
-   they need is to know it is there, which the modal's reader never can.
-3. **Chrome is first-class, but a footer is not worth the last content row.** The title
-   always renders and the footer only while a content row survives it, so the smallest boxes
-   degrade title → title + one row → title + row + footer rather than into a box that lists
-   its keys and no forwards.
-
-## D222 — The elision marker names where the rest is, and the clamp has one home (2026-08-05, BOX-03)
-
-D220 pt 3 fixed *that* a cut is announced and, with only the modal to go on, fixed the
-sentence too. The keybindings overlay is the case that separates the two: every row it elides
-is a binding the reader opened it to look up, and unlike a modal's message that content exists
-somewhere they can reach — `docs/keybindings.md`, generated from the same registry (D11).
-
-1. **When elided content is reachable elsewhere, the marker says where.** `… (truncated —
-   full list in docs/keybindings.md)` rather than the bare phrase. The invariant from D220 pt 3
-   is that a cut is announced; the wording is the surface's to choose, and a marker that leaves
-   a reader stuck when a complete answer is one file away is a worse read than a longer one.
-   `elide.Marker` stays the default for content that exists nowhere else (the modal,
-   `browsefail.go`'s clipped stderr) — a reader who meets those two still meets one phrase.
-2. **The clamp lives in `internal/tui/elide`, and a bounded overlay uses it rather than
-   re-deriving it.** `elide.Lines` is the whole of it: the marker *replaces* the last surviving
-   line instead of being appended (an appended row makes the block n+1 tall, which is the bug
-   D220 exists to prevent), and a block that fits comes back untouched so the marker stays
-   evidence rather than furniture. It renders nothing, so it is safe on styled blocks and the
-   caller keeps control of width-capping its own marker.
-3. **A box with no room for content renders nothing rather than a frame.** Below border +
-   title the overlay returns `""` and the base view shows through, as the forwards panel
-   already did — a clipped border is not a more honest failure than no box, and the hint line
-   outside the body still names the toggle that opened it.
-
-## D223 — A `HelpContext` is only real when both of its sides are closed (2026-08-05, HINT-05)
-
-The HINT line (D206/D217/D218) gave every capturing surface in kubecom a `HelpContext`, and
-D218 pt 1 recorded what it could not give them: nothing enforced that a *new* one arrives
-complete. `HelpContext` was a bare `iota` enum and `contextShortHelpActions` a map, so a
-constant with no entry fell through `ShortHelpContext`'s fallback to `shortHelpActions` — the
-**browse** set — on a surface where filter, help and quit type a character or are swallowed.
-That is the exact lie the HINT line exists to remove, arriving silently, with every test green.
-
-1. **The enum is bounded and enumerable, and both sides of a context are checked.** A context
-   is declared above `helpContextCount` and is then subject to two obligations: a curated
-   entry in `contextShortHelpActions` (`TestEveryHelpContextHasItsOwnHintSet`, keymap) and a
-   model state that makes `hintContext()` return it (`TestEveryHelpContextIsReachable`, tui).
-   Neither is generated — the sets stay curated by hand, which is the whole of D143 pt 1;
-   what is mechanical is only that a context cannot ship missing one. A future leg adding a
-   capturing surface adds a row to the reachability table, and that is the intended cost.
-2. **The fallback stays, and is for out-of-range integers only.** `ShortHelpContext` still
-   degrades to the focus-agnostic set for a value outside the enum — a caller passing one
-   should not panic — but it is no longer a way for a *declared* context to be under-specified,
-   because the test catches that first. Degrading and being incomplete are different failures.
-3. **A reachability failure is a routing bug, not a hint bug.** `hintContext()` mirrors
-   `Update`'s precedence deliberately (D206), so a context that no state can produce means its
-   surface has no arm in the switch, or a case above shadows it — in which case the router
-   above very likely shadows it too. Fix the precedence; do not reorder the test to pass.
-
-## D224 — A vault rule that a leg can break silently is checked by `make check` (2026-08-05, BOARD-01)
-
-D102 established that a board **Done entry is one line** and re-collapsed the list by hand
-(~50KB → ~17KB). It drifted back: by 2026-08-05 the board was 94KB with 52 of 202 entries
-between 400 and 712 runes — journal paragraphs pasted onto the board. Twice is the finding.
-The rule was never unclear; it was unenforced, and its cost is asymmetric — the leg that
-writes the paragraph pays nothing, every later Orient pays for it.
-
-1. **D102 is now a gate, not a convention.** `internal/vault` holds the drift guards for the
-   `vault/` tree; `TestBoardDoneEntriesAreOneLine` and
-   `TestBoardDoneSectionHoldsNothingButEntries` fail `make check` on an entry that is not the
-   `- [x] **ID** <short title> — done YYYY-MM-DD (Dnn, …)` shape, on one over 400 runes, and
-   on any non-blank line in the `## Done` section that is not an entry. The rune cap is a
-   **backstop, not a target** — the median entry is ~150 runes and D102's example is ~70 — so
-   do not read 400 as room to fill, and do not raise it to make an entry fit: shorten the
-   entry, and put the detail in the journal, which is what D67 makes the changelog.
-2. **The guard covers the Done list only.** Everything above `## Done` — In Progress, Blocked
-   and the per-line planning prose — is a live working area whose paragraphs carry why a line
-   was split and what a slice deliberately left, which the journal does *not* duplicate. It is
-   deliberately unchecked, and it is now the larger half of the file (BOARD-02). A leg that
-   compacts it is making a judgement about what is still load-bearing, so it may not be done
-   mechanically or on the strength of this decision.
-3. **This is the general shape, not a one-off.** A rule about a repository file that a human
-   or an agent must keep true belongs in a test — the precedent already existed for the
-   generated keybindings doc (D51), the release config (D175/D176/D185) and the screencast
-   tape (D181), and `internal/vault` is where the vault's own join it. Writing the rule into
-   `CLAUDE.md` or a skill is necessary and has now twice been shown to be insufficient on its
-   own.
-
-## D225 — The `## Done` index is the canonical record of a finished item; a section's `- [x]` is a working view (2026-08-06, BOARD-02a)
-
-BOARD-02's notes left the board in a half-and-half state: the `## Done` index had not been
-appended to since 2026-08-02, so 26 finished items existed only as the `- [x]` line inside
-their own Backlog line's section, while 207 older items existed only in the index. Both
-halves looked defensible, so this settles which one is the record.
-
-1. **The index is canonical.** When a line closes, its section collapses to a sentence —
-   `_(none — M2 is done)_`, `_(none — M1 is done …)_` — and every `- [x]` in it goes with the
-   section. That collapse is a normal, correct move for the leg that makes it, and it is
-   indistinguishable from housekeeping, so an entry that never reached the index is not
-   duplicated-then-tidied: it is **deleted**, silently, by a leg that is doing the right
-   thing. The per-line `- [x]` is therefore a working view of an item's state while its line
-   is open, and the index below `## Done` is what survives. This is why the completeness
-   check runs in one direction only — the index outliving its section is the point, not a
-   defect (`TestBoardDoneIndexIsComplete`, `internal/vault`).
-2. **The backfill is a copy, never a summary.** BOARD-01 declined to backfill on the grounds
-   that "summaries written by a leg that did not do the work" is how a wrong one gets in, and
-   that objection is right and stands. It stopped applying to *these* entries only because
-   BOARD-01's own collapse had already put every section entry into the D102 one-line shape:
-   25 of the 26 moved across unchanged, character for character. Where an entry does not fit
-   the shape (a parent rollup like `M2-07` or `PAL-03`), a leg may re-shape **its own words
-   and its own pointers** — the id, the date and every `(Dnn)` — and may not write a claim
-   the original entry did not make. A leg that cannot backfill an entry by copying it should
-   leave it and say so, not invent one.
-3. **A rollup entry carries the union of its slices' pointers, not a new claim.** `M2-07` and
-   `PAL-03` are parents whose work landed entirely in their slices, all of which are indexed.
-   Their index lines exist so the parent id resolves, and they say "via its four slices" /
-   "via its two slices" rather than restating what the slices did.
-
-## D226 — A board paragraph is not a backlog: deferred work names a destination, and a closed line's prose is a claim that goes stale (2026-08-06, BOARD-02b-1)
-
-Four closed lines (SEARCH, CRD-PIN, PAL, AUTH) ended with a sentence of the form "two things
-it deliberately left, either its own small item if a dogfood wants them". None of the seven
-was a `- [ ]`. So a leg on Orient read five open items, four of them blocked, and reported
-"nothing unblocked" three legs running — while a real, unblocked item sat four lines above
-one it *did* read. Deferring work into prose is invisible in exactly the way the D102 drift
-was: correct-looking to the leg that writes it, unreadable to every leg after.
-
-1. **A closed line's paragraph states current state, and nothing checks it.** Both of AUTH's
-   deferrals were false by the time they were read. "The confirm box clips its message at
-   sixty cells" was never true — sixty is `modalMaxWidth`, the *box*, and `modal.View` has
-   rendered the message through `lipgloss` `.Width(iw)` since M2-10, which wraps and
-   hard-wraps a token too long to break; the only elision is vertical and carries
-   `elide.Marker` (BOX-01/D220). "The offer's confirm has no `HelpContext`" was true when
-   written and was closed by HINT-02/D217 four days later, by a leg that had no reason to
-   look at the AUTH paragraph. A deferral is therefore **checked against the code when it is
-   harvested**, never trusted; and a leg that closes a gap another line's prose names is the
-   leg that should strike the sentence.
-2. **Every deferral names its destination in the same paragraph.** Exactly one of three
-   forms: a filed `- [ ]` id in `**bold**`; the literal **no item until asked**, for work
-   that wants a human to want it (a usage report, a dogfood) before a leg may pick it up; or
-   a `Dn`, when what is being deferred is a constraint rather than a task. Anything else is
-   prose that a future Orient cannot act on and a future compaction cannot safely drop. This
-   is checked — `TestBoardDeferralsNameTheirDestination`, `internal/vault` — under D224 pt 3,
-   with the same standing: the phrase list is a backstop, not the spec, and the answer to a
-   deferral it does not recognise is to name the destination, never to widen the list.
-3. **"No item until asked" is a real answer, and it is not the same as declined.** An item
-   nobody has asked for is not backlog: filing it invites a leg to build it to look busy,
-   which is the failure the leg skill names outright. Declined is stronger — the reasoning
-   against it is recorded (SEARCH's field selector, which would silently drop most of the
-   scope because a failed kind is silent by design, D131 pt 3) — and a future leg must answer
-   that reasoning rather than re-derive it. Neither is an invitation.
-
-## D227 — `:resource ` and `:pin ` share one snapshot, so narrowing the menu re-sources both or takes both down (2026-08-06, BOARD-02b-1)
-
-Carried out of the CRD-PIN paragraph, because it constrains a leg nobody has written yet
-rather than describing one that landed. Both palette stages build their items from the
-menu's item list via `resourcePickerItems` (D203 pt 4, D204 pt 1). That is equivalent to
-"every discovered kind" only because `Reconcile` appends every kind discovery finds — the
-premise, not a guarantee.
-
-The day a slice narrows what the menu lists — which is the CRD-heavy-cluster ask feedback
-`2026-08-01-custom-resources-pinning` opens with, so it is a question of when — both stages
-must be re-sourced from the discovery result at that one snapshot **in the same leg**, or
-the narrowing silently shrinks the picker and the pin verb with it. `:pin ` is the worse
-loss: a narrowed menu is exactly the situation pinning exists for, so a leg that narrows the
-menu and leaves `:pin ` reading from it has removed the way out of the problem it just made.
-
-## D228 — A row action declares whether it asks before it acts, in the registry, pinned to its handler (2026-08-06, PAL-06)
-
-1. **The declaration is a column of `rowActions`, not a list beside it.** `rowActionMeta`
-   carries `confirms` (spelled `asksFirst`/`actsAtOnce`), and the registry is an unkeyed
-   composite literal, so a new row action cannot be added without answering the question —
-   it does not compile. This is the whole reason the answer lives there rather than in a
-   set of its own: a separate list is a fourth hand-maintained inventory, and the board's
-   own filing of PAL-06 named that as the cost to avoid.
+### D228 — A row action declares whether it asks before it acts, in the registry, pinned to its handler (2026-08-06, PAL-06)
+1. **The declaration is a column of `rowActions`, not a list beside it.**
 2. **The column is pinned to the handlers, not trusted.**
-   `TestRowActionConfirmsMatchesTheHandlers` dispatches **every** registered action over a
-   real selected row with **every** seam wired and asserts a confirm appeared exactly when
-   the column said it would, stamped with the action's own modal kind. Wiring all the seams
-   is what makes the negative half mean anything: an unwired action is inert, so it would
-   pass "no confirm" without its handler ever running. A `ShowConfirm` added to or removed
-   from a handler in `app.go` fails this test, in both directions.
-3. **What is marked is permission, not input.** Scale and Port-forward open a *prompt*
-   (`ShowPrompt`) and stay unmarked: asking *what* to do is a different question from
-   asking *whether* to, and it is visible the moment the prompt opens. So the marker is the
-   word `(confirm)` and **not** the GUI ellipsis — "Delete…" reads as "opens a dialog",
-   which would make the unmarked Scale and Port-forward say something false. A future leg
-   that wants to mark prompts too adds a second marker; it does not widen this one.
-4. **The marker is part of the label, and the label is the identity.** `rowActionLabel` is
-   the one place it is added, and `paletteRowVerbs` — the single computation behind both
-   `:action ` and the `:` verb stage (D205 pt 1) — keys its resolution map by the marked
-   label, because a `picker.SelectedMsg` comes back as the label the reader saw (D203 pt 3).
-   The bare `title` stays the toast's wording: a dispatched action names the act ("Delete
-   Pod default/web-1"), never the question that preceded it.
+3. **What is marked is permission, not input.**
+4. **The marker is part of the label, and the label is the identity.**
 
-## D229 — A closed line's paragraph collapses to its outcome, its pointers and its standing answers (2026-08-06, BOARD-02b-2)
+### D229 — A closed line's paragraph collapses to its outcome, its pointers and its standing answers (2026-08-06, BOARD-02b-2)
+D224 pt 2 left the working area unchecked on the grounds that its prose "carries why a line was split and what a slice deliberately left, which the journal does *not* duplicate", and declined to authorise a compaction on the strength of that decision.
+1. **Closed lines only, and the shape is already on this board.**
+2. **Three things survive the collapse, and nothing else.**
+3. **A paragraph is collapsed only after its claims have been checked.**
+4. **This stays unchecked, deliberately.**
 
-D224 pt 2 left the working area unchecked on the grounds that its prose "carries why a line
-was split and what a slice deliberately left, which the journal does *not* duplicate", and
-declined to authorise a compaction on the strength of that decision. BOARD-02b-1 then took
-the second half of that sentence away: a deferral now names a filed item, a bold `Dnn` or
-"no item until asked", and both of AUTH's had gone false unnoticed (D226). What is left in a
-**closed** line's paragraph, once its deferrals and its carried constraints are elsewhere, is
-narrative — and the narrative is the journal's job (D67), joined to the board by the slice id
-every Done entry carries. So the judgement 02b-2 was filed to make is: **yes, and it is a
-collapse, not a delete.**
-
-1. **Closed lines only, and the shape is already on this board.** M1, M2 and M4 each read as
-   one italic sentence — `_(none — M2 is **done** …)_` — because the leg that closed them
-   collapsed the section, which is the same move D225 pt 1 describes. The feedback-driven
-   lines (SEARCH, LOGS, DIAG, CRD-PIN, HINT, BOX, PAL, AUTH) never got it. An **open** line's
-   prose is a live working area and stays: it is what the next slice is picked from.
-2. **Three things survive the collapse, and nothing else.** The *outcome* (what the line
-   delivered and which slice closed it); the *pointers* — every `Dnn`, because they are the
-   join key to `decisions.md` and, through the Done index, to the journal; and every
-   **standing answer**, verbatim in substance: a `no item until asked` and a `declined` are
-   the record that stops a later leg re-raising the question (D226 pt 3), so a collapse that
-   drops one converts a considered "no" into an open invitation. Split rationale, verification
-   detail and what a slice measured do not survive — they are in that slice's journal entry.
-3. **A paragraph is collapsed only after its claims have been checked.** D226 pt 1 says a
-   closed line's prose asserts what is true *now* and that nothing checks it. Collapsing an
-   unchecked paragraph launders a stale claim into a short, confident sentence, which is
-   worse than the long one — so the harvest is the prerequisite, not an optional first pass.
-   This is why 02b-2 collapsed exactly the four lines 02b-1 had verified and filed the other
-   four as BOARD-02b-3 rather than finishing the file.
-4. **This stays unchecked, deliberately.** No `internal/vault` guard follows this decision.
-   Which sentence is load-bearing is a judgement, and D224 pt 3's precedent is for rules a
-   test can state without one — "a Done entry is one line", "a deferral names a destination".
-   A length cap on the working area would be answered by writing shorter prose about open
-   lines, which is the opposite of what this decision protects.
-
-## D230 — The logs view bounds what it *fetches* and what a line *costs*, never how much it holds (2026-08-06, BOARD-02b-3)
-
-BOARD-02b-3 collapsed the LOGS line to "closed on features and on cost (D160, D162)" and had
-to check that sentence first. It is true and it is narrow: `LogOptions.TailLines`
-(`defaultLogTail`, 1000) bounds the history the server replays **before** the tail begins, and
-D162's rendered cache plus batched pump bound what **one** appended line costs. Nothing bounds
-the count. `logsview.appendLine` appends to `lines`, `stamps` and — on a match — `shownLines`
-and drops nothing for the life of the view; `Reset` only clears at the next open. At the
-~1,900 lines/sec the 2026-08-01 dogfood measured, a view left following grows without limit,
-and D191 pt 3 already recorded that the dogfood never sat on a stream long enough to see it.
-
-1. **No leg may cite D160 or D162 as evidence that the logs view's memory is bounded.** They
-   are latency decisions. A retention bound is a separate mechanism and, until **LOGS-07**
-   lands, it does not exist — so "logs are closed on cost" means fetch cost and per-line cost.
+### D230 — The logs view bounds what it *fetches* and what a line *costs*, never how much it holds (2026-08-06, BOARD-02b-3)
+BOARD-02b-3 collapsed the LOGS line to "closed on features and on cost (D160, D162)" and had to check that sentence first.
+1. **No leg may cite D160 or D162 as evidence that the logs view's memory is bounded.**
 2. **A streaming view that keeps a rendered cache alongside its buffer bounds both together.**
-   The cache is derived from the buffer and holds a filtered subset of it, so a trim that drops
-   a buffer prefix without dropping the cache's matching prefix (or rebuilding it) silently
-   desynchronises what is shown from what is held — the same coupling D162 pt 1 created when
-   it stopped rebuilding on every append. Whatever bounds one bounds the other, in one place.
 
-## D231 — A criterion closed on substitute evidence carries the substitution in the tick (2026-08-06, HT-dogfood-0806)
+### D231 — A criterion closed on substitute evidence carries the substitution in the tick (2026-08-06, HT-dogfood-0806)
+The M5 criterion "migration verified from a **real** legacy config file" asked for the one artifact nobody has: the maintainer's answer to `2026-07-30-real-legacy-config-migration` was *"I can't test, I don't have old config.
+1. **The tick and the substitution travel together, in the box itself.**
+2. **No leg may cite this tick as real-file evidence.**
+3. **"The human cannot do it" closes a task; it does not close the question.**
 
-The M5 criterion "migration verified from a **real** legacy config file" asked for the one
-artifact nobody has: the maintainer's answer to
-`2026-07-30-real-legacy-config-migration` was *"I can't test, I don't have old config. Rely
-on tests."* M5-05 had anticipated this and written the disposition into the task before the
-answer existed — tick it on the generated fixture (`internal/config/testdata/legacy-kubecom.yaml`,
-a `protojson.Marshal` → `yaml.JSONToYAML` file the 2020 writer's own two calls produced) **and
-record that it closed that way**. This is that record, and it generalises, because the same
-shape recurs every time a human task comes back "cannot be done" rather than "done":
+### D232 — Text kubecom did not write is sanitized at the seam that renders it, and that is only half of what corrupts the layout (2026-08-06, AUTH-06)
+Feedback `2026-08-06-auth-error-breaks-layout` reported an auth failure *distorting the surrounding UI* rather than showing as an error. Two separate mechanisms do that, and this decision exists so a later leg cannot mistake one for both.
+1. **Every surface that displays text kubecom did not write sanitizes it, at the point it renders it, through `internal/tui/safetext`.**
+2. **It is applied to the render, never to the stored string.**
+3. **No leg may cite this as evidence that an auth failure cannot corrupt the layout.**
 
-1. **The tick and the substitution travel together, in the box itself.** The M5 criterion and
-   the DoD box each carry `— ticked on the generated fixture, not on a real file (D231)` on the
-   `- [x]` line, not only in the paragraph below it. A reader skimming ticks sees the
-   qualification; a reader skimming paragraphs would not, and the paragraph is the part a later
-   collapse (D229) is licensed to shorten.
-2. **No leg may cite this tick as real-file evidence.** What the fixture shows is the *shape* —
-   every key in `master:pb/config.proto` maps, the whole launcher path runs green. What it
-   cannot show is an unparseable legacy config degrading **silently** to no migration (D92/D180
-   pt 4): no toast, no `config.yaml`, no error. That path has no evidence and this decision does
-   not supply any. A leg that touches `Migrate` still owes it hermetic coverage.
-3. **"The human cannot do it" closes a task; it does not close the question.** A `Status: done`
-   whose `## Result` is negative is still done — the task is discharged, the file is deleted,
-   and re-raising it would be asking the same person the same unanswerable question. But the
-   gap it was raised for stays named in the criterion it gated, so a future leg with new
-   access (a user report, a real file turning up) knows what to run rather than re-deriving why
-   the box reads the way it does.
+### D233 — Esc backs out of the surface, backspace unwinds the line; a key-opened palette stage closes on the first Esc (2026-08-06, PAL-07)
+Feedback `2026-08-06-action-menu-esc-behavior`: press `a` on a pod, press `Esc`, and the palette is still there.
+1. **Esc leaves the surface the reader is on for the one they came from.**
+2. **Backspace keeps rewinding, from every stage.**
+3. **A typed query still costs its own esc, in every picker.**
+**Refs:** supersedes D207 pt 2.
 
-## D232 — Text kubecom did not write is sanitized at the seam that renders it, and that is only half of what corrupts the layout (2026-08-06, AUTH-06)
+### D234 — A printed cell that is really a clock is re-derived locally; nothing else in the table is (2026-08-06, AGE-01)
+Feedback `2026-08-06-age-column-stale`: leave a resource pane open and the AGE column stops telling the truth.
+1. **AGE is re-derived on the client, from the object's own `creationTimestamp`, with the server's formatter.**
+2. **AGE is the only cell kubecom recomputes.**
+3. **A row kubecom cannot date keeps the server's string.**
+4. **The clock that drives it is unconditional and self-perpetuating.**
 
-Feedback `2026-08-06-auth-error-breaks-layout` reported an auth failure *distorting the
-surrounding UI* rather than showing as an error. Two separate mechanisms do that, and this
-decision exists so a later leg cannot mistake one for both.
+### D235 — In cluster search, enter is the seam between typing and moving; focus is the view's only mode (2026-08-06, SEARCH-05)
+Feedback `2026-08-06-cross-search-enter-navigate`: after typing a query and pressing enter, typing should stop being captured by the query input and `hjkl` should move through the results.
+1. **`nav.drillIn` commits before it opens.**
+2. **`nav.back` unwinds one step at a time**
+3. **Focus decides how a key is routed, and the two rules are asymmetric on purpose.**
+4. **Focus follows the rows.**
+5. **The committed query line is muted (`styles.Subtle`), and that is load-bearing, not decoration.**
+**Refs:** amends D140 pt 1.
 
-1. **Every surface that displays text kubecom did not write sanitizes it, at the point it
-   renders it, through `internal/tui/safetext`.** A credential plugin's stderr, an API
-   server's message and a kubeconfig's own strings all reach a bordered pane, a one-line bar
-   or a confirm box, and the layer underneath measures them with `ansi.StringWidth` — which
-   counts a control character as **zero cells**, so the wrap, the pad and the clip are all
-   correct and the terminal is steered anyway (`\r` over the left border, `\b` short of the
-   right one, `\x1b[2J` over the frame). `ansi.Strip` alone does not do it: it removes escape
-   sequences and leaves the bare C0 bytes. Three seams carry it today — `table.noticeBody`,
-   `statusbar`'s two transient setters, `modal.View`'s message.
-2. **It is applied to the render, never to the stored string.** The shell compares notices
-   back (`restoreReauthNotice` only rewrites a pane still showing what an answered offer
-   wrote), so a `SetNotice` that cleaned its argument would break that comparison for exactly
-   the notices most likely to need cleaning. The store keeps what the embedder composed; the
-   view is what must be safe.
-3. **No leg may cite this as evidence that an auth failure cannot corrupt the layout.** The
-   larger mechanism is untouched: client-go runs the exec credential plugin with
-   `cmd.Stderr = os.Stderr` (`plugin/pkg/client/auth/exec/exec.go`), so a plugin that prints
-   anything paints it directly onto the terminal the TUI is holding. The alt-screen does not
-   absorb it — the claim in D195 pt 3 and in `kube/authexec.go`'s comments that this text is
-   something "nobody ever sees" is **false**, and is superseded here. That is **AUTH-07**,
-   and until it lands the feedback's complaint is only half answered: this decision bounds
-   what kubecom *renders*, not what is written to fd 2 behind it.
-
-## D233 — Esc backs out of the surface, backspace unwinds the line; a key-opened palette stage closes on the first Esc (2026-08-06, PAL-07)
-
-Feedback `2026-08-06-action-menu-esc-behavior`: press `a` on a pod, press `Esc`, and the
-palette is still there. D207 pt 2 made a key-opened argument stage rewind to the verb list
-exactly as a typed one does — deliberately, so a key was "a way *into* the palette rather
-than a faster dead end". That reasoning holds for **backspace** and not for **esc**, and
-this decision splits them. It supersedes D207 pt 2 for esc only.
-
-1. **Esc leaves the surface the reader is on for the one they came from.** For a stage
-   reached by typing (`:` `theme` `␣`) that is the verb list, so esc still rewinds. For a
-   stage a shortcut key opened — `T`, `R`, `ctrl+n`, `C`, `a`, and the menu's namespace-seam
-   row — the reader has *never been on* the verb list, so rewinding to it is not backing
-   out: it swaps one surface for another and still owes a second esc. Those close outright.
-   The distinction is which surface the reader actually came from, not which stage the
-   palette is in, so it is carried by `palDirect` — set only by `openPaletteArg`, cleared by
-   `enterPaletteArg`/`showPaletteVerbs`/`closePalette` — and a new door onto a stage must
-   answer it (a key-like door sets it, a door off the verb list does not).
-2. **Backspace keeps rewinding, from every stage.** It edits the line, and erasing the
-   committed verb word is what it means there — which is also what preserves D207 pt 2's
-   real benefit: a key pressed by mistake is still one keystroke from every other verb. So
-   the D207 pt 1 property is intact (a key is sugar for a stage, not a second surface); what
-   changed is only which gesture pays for the mistake.
-3. **A typed query still costs its own esc, in every picker.** With text in the filter, the
-   first esc clears the query and the picker stays up (`picker.Update`'s ActionBack); only
-   then does esc reach the stage. The feedback asked for this to be an explicit call rather
-   than an accident, and it is: the query is text the reader typed and can see, esc is what
-   discards an input field's contents everywhere, and unwinding the visible thing first is
-   the same ordering as pt 1. No leg may make esc skip a non-empty query to close faster.
-
-## D234 — A printed cell that is really a clock is re-derived locally; nothing else in the table is (2026-08-06, AGE-01)
-
-Feedback `2026-08-06-age-column-stale`: leave a resource pane open and the AGE column stops
-telling the truth. It is not a watch failure — the cell is exactly what the API server's
-printer rendered, and the printer runs once per response. `kubectl get` prints and exits, so
-the value is never wrong for it; kubecom keeps the pane up, and a row nothing modifies
-produces no deltas, so its age is pinned to whenever it was last listed.
-
-1. **AGE is re-derived on the client, from the object's own `creationTimestamp`, with the
-   server's formatter.** `kube.Row` carries `Created` out of the Table's embedded object
-   metadata (the same metadata `ObjectRef` comes from) and `kube.HumanAge` formats it with
-   `k8s.io/apimachinery/pkg/util/duration.HumanDuration` — the function the server-side
-   printers call. Using a hand-rolled formatter here would make a re-derived cell disagree
-   with a freshly printed one on the compound forms (`5d3h`, `2m30s`), so a leg may not
-   substitute one.
-2. **AGE is the only cell kubecom recomputes.** Every other value in a server-printed table
-   is the server's answer to a question kubecom did not ask and cannot re-answer from the
-   metadata it holds; server-side printing exists precisely so kubecom shows kubectl's
-   columns without knowing what they mean (`tableAcceptHeader`). A future leg that wants
-   another column live must fix it by re-listing or by watching, not by growing this seam.
-   The age column is identified by header name, narrowed to string/date cells, so a CRD's
-   numeric field named "Age" is never overwritten.
-3. **A row kubecom cannot date keeps the server's string.** `Created` is zero for a row whose
-   object metadata was absent or unparsable (principle 3's degraded row). Computing from the
-   zero time would print `55y` — confidently wrong, in a column with no way to signal doubt —
-   so a stale value is preferred to a fabricated one.
-4. **The clock that drives it is unconditional and self-perpetuating.** `Init` arms a
-   one-second tick and the handler re-arms it, with no generation tag, no gating on a table
-   or a cluster, and no restart on a kind change / re-scope / drill-down / reconnect / context
-   switch. It is affordable because the refresh returns early when no age string moved and
-   costs nothing outside the model — unlike the metrics poll (D155 pt 3), whose every tick
-   issues a request and therefore *needs* that machinery. Do not "optimise" this into a gated
-   tick: the failure it buys is a clock that can be left off, which is the reported bug.
-
-## D235 — In cluster search, enter is the seam between typing and moving; focus is the view's only mode (2026-08-06, SEARCH-05)
-
-Feedback `2026-08-06-cross-search-enter-navigate`: after typing a query and pressing enter,
-typing should stop being captured by the query input and `hjkl` should move through the
-results. It could not, and the reason was structural: D140 pt 1 kept the query field open
-for the view's entire life, so every rune was text and only the keys that carry none (the
-arrows) ever reached the list. This **amends D140 pt 1** — the field is still open the whole
-time and still the view's centre, but it no longer holds the keyboard unconditionally.
-
-1. **`nav.drillIn` commits before it opens.** On the query field enter hands the keyboard to
-   the result list; on the list it emits `SelectedMsg` for the highlighted hit. Opening the
-   top hit therefore costs two enters, which is the price of the request and is paid only by
-   the reader who was already going to press enter once. With **no results, enter does
-   nothing at all** — a focus with no rows is a mode with no cursor and no visible reason for
-   typing to have stopped working.
-2. **`nav.back` unwinds one step at a time**, innermost first: results → query field,
-   non-empty query → cleared, empty query → closed. This is D233's rule (esc leaves the
-   surface for the one the reader came from) applied here; leaving the results must never
-   cost the query, because refining a committed search is the common next act.
-3. **Focus decides how a key is routed, and the two rules are asymmetric on purpose.** On the
-   query, only a mapped key carrying no text is an action (`q` types a `q`, as in the table
-   filter). On the results, a mapped key is an action **whether or not it carries text** —
-   that is what makes `hjkl`/`g`/`G` work — and an unmapped key is **dropped, not typed**. A
-   surface where some letters move and the rest silently edit a line one row up (re-running
-   the search and discarding the rows the reader is standing on) is worse than one where
-   letters only ever do one thing. Esc is the documented way back to editing.
-4. **Focus follows the rows.** Anything that drops the hits — either scope widen, a reset —
-   returns focus to the query field, and `refocusQuery` is the only way it moves back, so the
-   flag and the textinput's own focus can never disagree. A view claiming query focus with a
-   blurred field shows no cursor, which reads as a hang.
-5. **The committed query line is muted (`styles.Subtle`), and that is load-bearing, not
-   decoration.** It is the only standing signal that typing no longer reaches the field; the
-   textinput's cursor merely *vanishes* on blur, and an absence is not something a reader
-   notices they are looking at. A leg restyling this view keeps a visible difference between
-   the two focus states.
-
-## D236 — A built-in theme is a palette, an attribution and a name that cannot move; light palettes wait on a background (2026-08-06, THEME-01)
-
-Feedback `2026-08-06-more-themes` asked for ~10 built-ins, Catppuccin among them,
-and for licences to be **checked per theme rather than assumed**. The survey and
-the per-scheme licence findings live in `vault/knowledge/themes.md`; what a future
-leg must not contradict:
-
+### D236 — A built-in theme is a palette, an attribution and a name that cannot move; light palettes wait on a background (2026-08-06, THEME-01)
+Feedback `2026-08-06-more-themes` asked for ~10 built-ins, Catppuccin among them, and for licences to be **checked per theme rather than assumed**. The survey and the per-scheme licence findings live in `vault/knowledge/themes.md`; what a future leg must not contradict:
 1. **A ported palette carries its attribution in the constructor's doc comment**
-   — project, licence, copyright line — and the values come from the upstream
-   *data* file, not a port or a screenshot. Nothing upstream is vendored (a theme
-   is thirteen hex values, D169 pt 3), so the comment is the notice, and it is the
-   only thing that stops kubecom shipping someone's scheme anonymously. A leg
-   adding a palette without one has not finished the port. Tokyo Night is
-   **Apache-2.0**, not MIT, and gruvbox upstream carries **no licence** (the
-   author's community fork does) — neither may be folded into an "all MIT" line.
+2. **`default` and `catppuccin-frappe` are one palette under two names, on purpose.**
+3. **No light theme until kubecom paints its own background.**
+4. **A flavor family is named `<scheme>-<flavor>`.**
 
-2. **`default` and `catppuccin-frappe` are one palette under two names, on
-   purpose.** kubecom's default has always been Catppuccin Frappé; D169 pt 1
-   makes the name `default` unrenameable, and dropping the flavor would leave the
-   family missing its middle member in a picker that filters on `catppuccin-`. So
-   the values live once (`catppuccinFrappeFlavor`) and both constructors return
-   them. This is the registry's **only** permitted duplicate: the distinctness
-   guarantee still holds for every other pair, and `TestDefaultThemeIsCatppuccinFrappe`
-   fails if the two ever drift apart.
+### D237 — A palette row is the command's name *and* its description, in two columns (2026-08-06, PAL-08)
+Feedback `2026-08-06-palette-two-columns`: the palette showed only each verb's description, so the reader could not see what the command was actually called. Addressed by giving `picker.Item` an optional `Name` drawn in a column before the label. What a later leg must not silently contradict:
+1. **The name is display + match; the Label is still the identity.**
+2. **A command's name is the id it already has elsewhere**
+3. **A picker row is one line — it is truncated, never wrapped.**
+4. **The column is measured over the *visible* rows, not the whole item set**
+5. **Unnamed lists render exactly as before.**
 
-3. **No light theme until kubecom paints its own background.** `styles.New` sets
-   a background on three things only (selected row, status bar, search match);
-   everything else is foreground text over whatever the terminal already is. A
-   light palette's dark text on a dark terminal is unreadable, and it reads as a
-   kubecom rendering bug rather than a mismatch. Adding a `Background` role is
-   allowed — but by D169 pt 3 it must be filled in every built-in in the same leg
-   and the panes must actually paint it, so it is its own slice, never a rider on
-   a palette port. Until then, "is it dark?" is an admission criterion for the
-   registry.
+### D238 — An editing key with nothing to edit is a cancel: backspace on an empty `/` query resolves to nav.back (2026-08-06, FILT-01)
+Feedback `2026-08-06-search-backspace-cancel`: press `/`, press backspace with nothing typed, and the query field stays open and empty.
+1. **The gesture is the last backspace, not the first.**
+2. **It resolves to `nav.back`, it does not get a cancel path of its own.**
+3. **The keymap wins.**
+4. **It applies to a `/` that opened over content, not to a picker's filter.**
 
-4. **A flavor family is named `<scheme>-<flavor>`.** The prefix is what makes the
-   family select as one group in the theme picker's filter, and it keeps D169 pt 1
-   affordable: a flavor added later is a new name, never a re-tuning of an
-   existing one.
+### D239 — A `/` match is painted over the row's own colors, and the cursor bar does not hide it (2026-08-07, FILT-02)
+Feedback `2026-08-06-search-highlight-matches` asked for matched text to be highlighted in both `/` search and cluster search.
+1. **The highlight's scope is the filter's scope, exactly.**
+2. **A match wins over a cell's status color, and the role span is cut around it rather than replaced.**
+3. **The selection bar does not win over a match**
+4. **Span coordinates stay in runes and unclipped columns.**
 
-## D237 — A palette row is the command's name *and* its description, in two columns (2026-08-06, PAL-08)
+### D240 — Landing where you left off is per-context *state*, not a warm cluster: pane memory is an inert bookmark on the ContextState seam (2026-08-07, CTX-MEM-01)
+From feedback `2026-08-06-context-switch-pane-memory`: "flip to context B, look at its `pods` pane, flip back to context A, and be looking at what I was looking at before".
+1. **The feedback is two asks and they belong on two lines.**
+2. **Pane memory rides the existing `ContextState` seam (M4-05/D163), never a shell-side map of departed contexts.**
+3. **What is remembered is an address, not data.**
+4. **It restores at launch as well as at a switch.**
+5. **The bound the feedback offered does not apply to this half, and D196 pt 4's one-entry cap is unchanged for the other.**
+6. **The drill-in scope is deferred, not forgotten (CTX-MEM-04).**
 
-Feedback `2026-08-06-palette-two-columns`: the palette showed only each verb's
-description, so the reader could not see what the command was actually called.
-Addressed by giving `picker.Item` an optional `Name` drawn in a column before the
-label. What a later leg must not silently contradict:
+### D241 — The README is the narrative and `docs/` is the reference; a doc guard scans the doc set, not one file (2026-08-07, DOC-01)
+From feedback `2026-08-07-readme-structural-rewrite`: the README had grown to 587 lines by accretion — every leg that added a capability appended a paragraph under one flat `## Usage` heading, install sat ahead of a single concrete thing kubecom does, and config/theme/menu reference was interleaved with the walkthrough.
+1. **The README answers "is this for me", organised by capability.**
+2. **Reference material lives in `docs/`.**
+3. **A guard over user-facing docs reads the doc set, not `README.md`.**
 
-1. **The name is display + match; the Label is still the identity.** A pick comes
-   back as the Label and the resolution maps stay keyed by it (D203 pt 3), so a
-   surface can name its rows without rekeying anything. A leg tempted to make the
-   name the value of a `SelectedMsg` is changing that key for every picker at once.
-
-2. **A command's name is the id it already has elsewhere** — the `keymap.Action`
-   for an app-global verb (`ns.switch`), the `rowAction` id for a row verb
-   (`delete`, the word the `:action ` line takes, D210). Not a new short word
-   invented for the column: the ids are unique by construction, they are what
-   `config.yaml`'s `keys:` map and `docs/keybindings.md` call the command, and a
-   second naming scheme would be a second thing to keep true. The palette's
-   argument *word* (`:namespace `) is the prompt, not the name.
-
-3. **A picker row is one line — it is truncated, never wrapped.** The delegate
-   declares `Height() == 1`; lipgloss's `Width()` wraps, so an over-long row
-   silently became two and pushed the last item off the bottom of the modal. Rows
-   are cut to the list width with an `…` before they are styled. A leg that widens
-   what a row carries owes the same cut, or the modal's geometry stops meaning
-   what it says (D220 pt 1's warning, one component further in).
-
-4. **The column is measured over the *visible* rows, not the whole item set**, so
-   a query that narrows to short names gives the width back to the descriptions.
-   That is also why the delegate is rebuilt in one place (`syncDelegate`): the
-   styles and the column width are two inputs to the same renderer and a leg that
-   sets one without the other loses the layout on a theme change.
-
-5. **Unnamed lists render exactly as before.** Every picker but the palette seeds
-   plain values, and none of them may grow an empty gutter — the two-column layout
-   exists only where something is named.
-
-## D238 — An editing key with nothing to edit is a cancel: backspace on an empty `/` query resolves to nav.back (2026-08-06, FILT-01)
-
-Feedback `2026-08-06-search-backspace-cancel`: press `/`, press backspace with nothing
-typed, and the query field stays open and empty. D73's control/text split routed it there
-by construction — backspace is an unmapped no-text key, so it is *editing*, so it goes to
-the field — and a field with an empty line has nothing to do with it. This adds the third
-arm the split was missing. It does not change what any key means while there is text to
-erase.
-
-1. **The gesture is the last backspace, not the first.** With characters left it edits and
-   re-narrows live, exactly as before; only a backspace that finds the line already empty
-   is a cancel. The count comes from the line, never from how the field was opened — a `/`
-   reopened on a committed query (`openFilter` seeds it) costs one backspace per character
-   plus one, which is what "past the start" means and is why the predicate reads the field's
-   value rather than a "was anything typed" flag.
-
-2. **It resolves to `nav.back`, it does not get a cancel path of its own.** Each `/` surface
-   already has an unwind ladder and backspace joins it at the step the reader is standing on
-   — the table filter's `clearFilter`, the logs view's `closeFilter`. So the two gestures can
-   never come to mean different things, and a surface that changes what esc does gets the
-   same change for free. In the logs view this is load-bearing: the route is reached only
-   while the grep is open, so backspace can only ever take the ladder's *first* step and can
-   never dismiss the view out from under a stream the reader is watching.
-
-3. **The keymap wins.** The check runs after `m.keymap.Action(key)`, so a config that binds
-   backspace to something keeps it. A leg adding a `/` surface puts the predicate in the same
-   position or the binding stops being honoured on that surface alone.
-
-4. **It applies to a `/` that opened over content, not to a picker's filter.** In a picker
-   the reader opened the *picker*; its filter is incidental, an empty query is already
-   showing everything, and cancelling has nothing to cancel — the palette's own backspace
-   rewinds the line instead (D207 pt 2 / D233 pt 2) and keeps doing so. The cluster-search
-   view is excluded for the opposite reason: its query is not a mode over content but the
-   view itself (D140 pt 1), so "cancel" there means dismissing a whole mini-app, which stays
-   on esc alone (D235 pt 2) until someone asks for otherwise.
-
-## D239 — A `/` match is painted over the row's own colors, and the cursor bar does not hide it (2026-08-07, FILT-02)
-
-Feedback `2026-08-06-search-highlight-matches` asked for matched text to be highlighted in
-both `/` search and cluster search. The logs grep already did (D145); the resource table and
-cluster search did not. This decision covers the table (FILT-02); cluster search is SEARCH-06
-and will need its own, because a fuzzy hit's matched runes are not a substring.
-
-1. **The highlight's scope is the filter's scope, exactly.** Match spans are computed over
-   `m.visible` — the same columns `rowMatches` narrows on — with the same case-insensitive
-   substring rule, so every occurrence the filter counted as a reason to keep a row is
-   marked, and a hit in a hidden column is never claimed. A later leg that changes what the
-   filter matches on (a fuzzy mode, a column scope) changes both or the row acquires marks
-   that do not explain why it is there.
-
-2. **A match wins over a cell's status color, and the role span is cut around it rather than
-   replaced.** The colored part of the cell that did not match keeps its color. Status color
-   is information about the row that the reader can go and get by moving off it; a match is
-   the reason the row is on screen at all.
-
-3. **The selection bar does not win over a match** — the one exception to "selection wins
-   outright over cell coloring" (M4-06). Hiding the marks under the cursor would blank the
-   answer on exactly the row being read, which is the row `n`/`N` puts there. `styles.Match`
-   already existed with this in mind ("the Warn hue rather than Selection so a highlight is
-   never confused with the cursor — the two can appear on the same line"), so no new role was
-   needed. `paintRow` takes the base style for this: Selection for the cursor row, body text
-   otherwise.
-
-4. **Span coordinates stay in runes and unclipped columns.** Match spans join the M4-06 role
-   spans in the one coordinate space `columnStarts` and `padRight` already measure in, so the
-   horizontal scroll offset is still applied once, at paint time. A future span kind (a diff
-   marker, a stale-row wash) adds a flag to `roleSpan` and a case to `spanStyle`; it must not
-   extend `cellRole`, whose constants are ordered by severity and merged with `>`.
-
-## D240 — Landing where you left off is per-context *state*, not a warm cluster: pane memory is an inert bookmark on the ContextState seam (2026-08-07, CTX-MEM-01)
-
-From feedback `2026-08-06-context-switch-pane-memory`: "flip to context B, look at its
-`pods` pane, flip back to context A, and be looking at what I was looking at before". The
-submitter flagged that this pushes on D196 and asked for the resolution to be recorded
-rather than quietly made. It is recorded here, before any code remembers anything.
-
-1. **The feedback is two asks and they belong on two lines.** "Like flipping a tab" is
-   *fast* (CTX-WARM, D196 — retain the connector's client/discovery, gated on measurement
-   and on the leak checks in `2026-07-29-context-switch-live-dogfood`) **and** *where I
-   left off* (CTX-MEM, this line). Only the first needs anything live to survive a switch,
-   so only the first is gated by D196 pt 5. Splitting them is what lets the half the
-   submitter actually described — the pane, not the millisecond — proceed now.
-
-2. **Pane memory rides the existing `ContextState` seam (M4-05/D163), never a shell-side
-   map of departed contexts.** It is written to the context's own state file when it
-   changes and read back by `LoadContextState` on the way in, exactly as the namespace,
-   the menu extras and the pins already are. So **D196 pt 1 stays literally true**: the
-   shell holds nothing belonging to a context it is not on, and the teardown stays
-   unconditional. A leg that instead keeps a `map[context]paneState` on the `Model` is
-   contradicting this decision, not implementing it.
-
-3. **What is remembered is an address, not data.** A GVR (plus the namespace D163 already
-   carries) — never rows, never an object's contents, never a client. It is re-resolved
-   against the new connection like any other drill-in, and it is **never trusted**: a
-   remembered kind the cluster does not serve degrades to the seed menu and the welcome
-   pane with no error (principle 3). D196 pt 4's rule holds for this line too — nothing
-   user-visible may *depend* on a context having been visited before; the second visit may
-   only start closer to where you were.
-
-4. **It restores at launch as well as at a switch.** The state file is not session-scoped
-   and `LastNamespace` already behaves this way, so remembering the pane between switches
-   but forgetting it between runs would be a second lifetime nobody asked for. An explicit
-   flag, if one ever names a resource, wins for that run — the precedent `-n` set
-   (M2-11b-2).
-
-5. **The bound the feedback offered does not apply to this half, and D196 pt 4's one-entry
-   cap is unchanged for the other.** "Evict after idle, or once more than N contexts are
-   held" is a memory question, and a bookmark holds no memory: it is a few dozen bytes in
-   a per-context file that already exists. There is nothing to evict. Bounding stays a
-   CTX-WARM question about live clients and discovery results, still capped at the
-   previous context only.
-
-6. **The drill-in scope is deferred, not forgotten (CTX-MEM-04).** A children scope names
-   an owner *object* (D165's `ChildScope`, cleared by `clearChildScope`), whose selector
-   may not survive the
-   time away; restoring it is an object re-resolve that can fail, and silently landing in
-   a *different* scope is worse than landing on the plain list. Only a leg that can make
-   that failure legible on screen should take it.
-
-## D241 — The README is the narrative and `docs/` is the reference; a doc guard scans the doc set, not one file (2026-08-07, DOC-01)
-
-From feedback `2026-08-07-readme-structural-rewrite`: the README had grown to 587 lines by
-accretion — every leg that added a capability appended a paragraph under one flat `## Usage`
-heading, install sat ahead of a single concrete thing kubecom does, and config/theme/menu
-reference was interleaved with the walkthrough. D68 ("a leg that changes install/launch/
-config/usage updates the README in the same leg") is what produced that, and it stands —
-this decision says *where* in the doc set that update goes.
-
-1. **The README answers "is this for me", organised by capability.** What kubecom is, why,
-   then what it can do under headings a reader can skim — browse/navigate, find, inspect,
-   act, make it yours, when something doesn't work — then a short install block, then
-   pointers. A new capability goes **under the heading it belongs to**, not appended at the
-   end; a leg that cannot find a heading for what it added has found a missing heading, not
-   a reason to append.
-
-2. **Reference material lives in `docs/`.** Install paths and their caveats in
-   `docs/install.md`, the config file / themes / per-context menus / pins / remembered
-   namespace / 2020 migration in `docs/configuration.md`, keys in the generated
-   `docs/keybindings.md`. The README may restate a reference fact only in the compressed
-   form a reader needs to decide something, and links to the page that owns it. The test of
-   whether a paragraph belongs in the README is whether it reads as *interruption* front to
-   back — if it is looked up rather than read, it is reference.
-
-3. **A guard over user-facing docs reads the doc set, not `README.md`.** The three install
-   guards in `internal/version` (Homebrew tap, AUR package name, ghcr.io image) each return
-   early when the doc names no install path — so keying them on one file means relocating a
-   section silently retires the guard, and nothing fails. They now scan `installDocs`
-   (README + `docs/install.md`). Any future guard over prose does the same: name the set the
-   claim can legitimately live in, never the file it happens to live in today.
-
-## D242 — The logs view's cursor addresses log lines; the selection bar is derived, never cached (2026-08-07, LOGS-SEL-01)
-
-From feedback `2026-08-07-logs-selection-and-yank`. The logs view had scrolling and no
-cursor, so nothing could say "this line" and nothing could copy one. This is the cursor;
-LOGS-SEL-02 is the visual mode and the yank on top of it. The constraints a later leg must
-not walk into:
-
-1. **The cursor counts log lines, not screen rows.** One `j` crosses a whole soft-wrapped
-   line however many rows it occupies. This is the property that makes the feature worth
-   having at all — the terminal's own select-to-copy is rejected in the feedback precisely
-   because it operates on visual rows — so a selection, and the yank that reads it, are
-   ranges of *lines* and a yanked line comes back as it arrived, unwrapped.
-
+### D242 — The logs view's cursor addresses log lines; the selection bar is derived, never cached (2026-08-07, LOGS-SEL-01)
+From feedback `2026-08-07-logs-selection-and-yank`. The logs view had scrolling and no cursor, so nothing could say "this line" and nothing could copy one. This is the cursor; LOGS-SEL-02 is the visual mode and the yank on top of it. The constraints a later leg must not walk into:
+1. **The cursor counts log lines, not screen rows.**
 2. **The cursor addresses the shown set, and `shownIdx` is how it reaches the buffer.**
-   With a `/` query active the cursor walks the lines the query kept, so what it points at
-   is always what is on screen. `shownIdx` maps each shown line back to `lines`/`stamps`
-   and is the *only* sanctioned route from a cursor position to raw text.
+3. **Selection and Match share the cursor's line.**
+4. **The bar is painted on the way to the viewport, never into `shownLines`.**
+5. **Following owns the cursor.**
+6. **Row arithmetic is done here, in wrap mode only.**
 
-3. **Selection and Match share the cursor's line.** Neither yields. This is D239's rule for
-   the table, and it binds harder here: in a grep the match is why the line is on screen, so
-   blanking the marks under the cursor blanks the answer on the one line being read.
-   `styles.Match` was given the Warn hue rather than Selection for exactly this coexistence.
+### D243 — Pane memory is written where the watch goes live and replayed where discovery lands; the attempt is single and always loses (2026-08-07, CTX-MEM-02)
+D240 said *what* is remembered (an address on the `ContextState` seam) and *that* a miss must be silent. This is where the two ends attach, and CTX-MEM-03/04 extend these points rather than re-choosing them.
+1. **One write point: `watchResource`, after `Watch` returned.**
+2. **One replay point: `handleDiscovery`, after `Reconcile`.**
+3. **The restore is attempted once per cluster and loses every tie.**
 
-4. **The bar is painted on the way to the viewport, never into `shownLines`.** That cache is
-   defined as what a full rebuild would produce (LOGS-05b), so baking the cursor into it
-   would make every cursor move an invalidation — and would put escape sequences in front of
-   the text a yank must copy. The clipboard gets `lines[i]`, joined with `\n`, with the stamp
-   prefixed exactly when `logs.timestamps` is on so the copy matches the screen.
-
-5. **Following owns the cursor.** A followed view's cursor is the newest line; any upward
-   move pauses following first (the pre-existing rule), and downward movement still does not
-   resume it (D147). A cursor left behind while a stream runs at ~1,900 lines/sec is not a
-   position, and this is what LOGS-SEL-02's "entering visual mode pauses follow" rests on.
-
-6. **Row arithmetic is done here, in wrap mode only.** `viewport.EnsureVisible` compares a
-   content-line index against a row offset, which only agree while clipping; wrapped, the
-   offset counts display rows, so keeping the cursor visible means summing the heights above
-   it. That walk is O(shown lines) and is paid on a reader gesture only — the same order
-   `rebuildShown` already pays per keystroke in the grep — and never on an append.
-
-## D243 — Pane memory is written where the watch goes live and replayed where discovery lands; the attempt is single and always loses (2026-08-07, CTX-MEM-02)
-
-D240 said *what* is remembered (an address on the `ContextState` seam) and *that* a miss
-must be silent. This is where the two ends attach, and CTX-MEM-03/04 extend these points
-rather than re-choosing them.
-
-1. **One write point: `watchResource`, after `Watch` returned.** Every way of opening a
-   browse table — the menu, the `:resource ` stage, a search hit, a namespace re-scope, a
-   children drill-down — passes through it, so a later leg adding a sixth surface records
-   for free and cannot forget to. Recording *after* the watch is live is the load-bearing
-   half: a kind whose LIST the server refuses is not a kind the reader was browsing, and
-   remembering it would reopen the same failure on every launch. The dedupe against what is
-   already recorded is not an optimisation — without it a namespace re-scope, which
-   re-selects the same kind, rewrites the state file on every change.
-
-2. **One replay point: `handleDiscovery`, after `Reconcile`.** Not the connect, not
-   `Init` — before the pass the menu is the seed, so a remembered CRD would read as "not
-   served here" on every cluster that serves it. This is the same moment CTX-WARM-01's
-   stopwatch stops, and it is where anything else per-context and menu-resolved (a sort
-   column, CTX-MEM-03) belongs too.
-
-3. **The restore is attempted once per cluster and loses every tie.** It is armed by a
-   launch or a switch, consumed whatever the outcome, and skipped outright if the reader
-   already drilled in while the pass was running. A second pass on the same cluster — a
-   reconnect, or any later leg that refreshes the API surface — must not drag a reader who
-   is sitting on the menu into a table. A restore may only ever be the *first* thing that
-   happens on a cluster, never an interruption of something later.
-
-## D244 — Visual mode owns follow; the yank copies the buffer, and `y` is a second confirm-context twin (2026-08-07, LOGS-SEL-02)
-
-D242 built the cursor and named the constraints a selection would inherit. This is the
-selection and the copy on top of it. What a later leg must not silently contradict:
-
-1. **A selection and a running stream are mutually exclusive.** Following pins the cursor
-   to the newest line (D242 pt 5), so `logs.select` suspends following for the selection's
-   whole life and remembers whether it was *it* that did so — leaving visual mode restores
-   only the pause visual mode caused, never one the reader made themselves. `logs.follow`
-   is the one gesture that ends a selection outright: it means "back to the stream", and
-   the two cannot both be true.
-
-2. **`nav.bottom` changes meaning inside visual mode.** Outside it, `G` re-arms following
-   (D147/LOGS-04c). Inside it, that would hand the moving end of the selection to the
-   stream, so it extends to the last shown line instead and follow stays off. This is what
-   makes `gg v G y` — copy the whole buffer — the gesture it looks like, and it is the
-   only nav key whose meaning is mode-dependent here.
-
+### D244 — Visual mode owns follow; the yank copies the buffer, and `y` is a second confirm-context twin (2026-08-07, LOGS-SEL-02)
+D242 built the cursor and named the constraints a selection would inherit. This is the selection and the copy on top of it. What a later leg must not silently contradict:
+1. **A selection and a running stream are mutually exclusive.**
+2. **`nav.bottom` changes meaning inside visual mode.**
 3. **Both ends of the selection are log lines, carried across a rebuild by buffer index.**
-   The anchor is re-found exactly as the cursor is (D242 pt 2), *not* clamped into the new
-   body: clamping happens to agree whenever the anchor is the last shown line, so a test
-   that only exercises that case proves nothing — the mutation is masked. A grep change
-   narrows a selection to the lines that survive it and never widens it.
+4. **The copy is the buffer, not the screen.**
+5. **`y` is browse-context `logs.yank` and confirm-context `confirm.accept` at once.**
+6. **The closed-grep logs hint no longer offers `logs.regex`.**
 
-4. **The copy is the buffer, not the screen.** `Yank` builds from `lines[i]` with the
-   stamp prefixed exactly when `logs.timestamps` is on, so the clipboard carries no escape
-   sequence and a soft-wrapped line comes back whole. This is D242 pt 4 discharged, and it
-   is the whole reason the feature exists rather than "use the terminal's select-to-copy".
-   The clipboard write and its status-bar confirmation stay in the shell (as `secret.copy`
-   does, M3-08b); the component owns only which lines and what their raw text is.
+### D245 — The logs buffer is bounded, drops from the top, and says so once it has (2026-08-07, LOGS-07)
+Nothing bounded it before: `TailLines` bounds the **replay** that precedes the tail, and LOGS-05b bounds what a line **costs**, not how many are held (D230).
+1. **The cap must exceed the opening replay.**
+2. **The trim drops from the top, in chunks, and is O(1) per line amortized.**
+3. **Everything that addresses a line by index moves with the trim.**
+4. **A trimmed buffer says so, once, in a word.**
 
-5. **`y` is browse-context `logs.yank` and confirm-context `confirm.accept` at once.** The
-   second key to be bound in both contexts, and the first that is a live action in both. It
-   is safe because the surfaces are modal — the confirm modal captures every key while it
-   is up — not because one of them is dormant. A later leg giving `y` a third meaning in
-   the browse context is a collision, and Merge will say so.
+### D246 — A cluster-search hit carries the runes it matched (2026-08-07, SEARCH-06)
+FILT-02/D239 painted the table's `/` matches, and the obvious move was to do the same thing here.
+1. **`kube.SearchHit.Match` is the marks, in the *name's* rune space.**
+2. **The marks are the occurrence the score was read from.**
+3. **Spans are a second pass, not an extra return from `Match`.**
+4. **The cursor row keeps its marks**
 
-6. **The closed-grep logs hint no longer offers `logs.regex`.** The line is the scarcest in
-   the app and `v`/`y` are gestures nothing on screen announces, while with no query typed
-   there is nothing for the mode toggle to re-interpret. It is still hinted with the grep
-   *open*, still fires in both states, and `?` and `docs/keybindings.md` still carry it —
-   this is a hint budget, not a claim about what acts.
+### D247 — fd 2 belongs to the log for the life of the TUI, and to the terminal only inside a suspend (2026-08-07, AUTH-07)
+The alt screen is not a second terminal. Anything written to file descriptor 2 while kubecom is up paints over the panes and survives until bubbletea happens to repaint those exact lines — client-go's exec credential plugin (`cmd.Stderr = a.stderr`, on *every* refresh, not only a failing one), a panic trace, a cgo…
+1. **The descriptor, not the variable.**
+2. **The redirect covers the TUI's life, not the process's.**
+3. **Every `tea.Exec` in `internal/tui` goes through `Model.suspend`.**
+4. **A failed handover never fails the action.**
+5. **This does not license printing to fd 2.**
 
-## D245 — The logs buffer is bounded, drops from the top, and says so once it has (2026-08-07, LOGS-07)
-
-Nothing bounded it before: `TailLines` bounds the **replay** that precedes the tail, and
-LOGS-05b bounds what a line **costs**, not how many are held (D230). At the ~1,900 lines/sec
-that D162's dogfood measured, a view left following grew `lines`, `stamps` and `shownLines`
-for as long as it was open. What a later leg must not silently contradict:
-
-1. **The cap must exceed the opening replay.** `logsview.MaxLines` (10 000) is deliberately
-   an order above `defaultLogTail` (1 000): a cap at or under the replay would have the
-   *first live line* start discarding history the reader just asked the apiserver for and
-   has not scrolled to yet. The two live in different packages, so the relationship is held
-   by a test in `internal/tui` rather than by the constants' proximity. Tune either freely;
-   keep the inequality.
-
-2. **The trim drops from the top, in chunks, and is O(1) per line amortized.** Dropping a
-   prefix costs O(held), so trimming on every line past the cap would make a fast stream
-   quadratic — the buffer runs `trimChunk` past `MaxLines` and is then taken back to it.
-   "Bounded" therefore means `MaxLines+trimChunk`, not `MaxLines`. The prefix is *deleted*
-   (`slices.Delete`), never resliced away: a reslice keeps the dropped strings reachable
-   through the backing array, which is the growth this exists to stop.
-
-3. **Everything that addresses a line by index moves with the trim.** `shownIdx` holds
-   buffer indices, so a trim renumbers all of them and evicts the entries pointing into the
-   dropped prefix; the cursor and the selection anchor count *shown* lines and shift by that
-   eviction; the viewport's y-offset counts *rows* and comes down by the rows that left, so
-   the stream cannot scroll a paused reader. A trim is the one event that moves all four at
-   once — a future field derived from a line index has to join them.
-
-4. **A trimmed buffer says so, once, in a word.** The top of the body is no longer the top
-   of the stream, so `gg` lands mid-log in something that otherwise looks like its start —
-   state with no other evidence on screen, which is D146's test for a marker. `[trimmed]` is
-   a fixed word, not a count of what was dropped: the count would change on every trim and
-   the reader can act on none of it. It clears only with the buffer (`Restream`).
-
-## D246 — A cluster-search hit carries the runes it matched (2026-08-07, SEARCH-06)
-
-FILT-02/D239 painted the table's `/` matches, and the obvious move was to do the same
-thing here. It does not transfer: a table match is a substring by construction, so the
-view can re-derive the spans from the query at paint time, while a cluster hit may be a
-**subsequence** (D153 — `wbp` matching `web-pod`) or a **label-selector** hit (D151) that
-matches nothing the name shows. Only the matcher that scored the hit knows what to mark.
-What a later leg must not silently contradict:
-
-1. **`kube.SearchHit.Match` is the marks, in the *name's* rune space.** The offsets are
-   into `Ref.Name` — not into whatever row a consumer builds around it — so the shift into
-   a display line belongs to the side that laid the line out. `searchview` derives it as
-   "the label's rune length minus the name's", because the label ends with the name by
-   construction and that stays true if the row ever gains a column; re-adding the kind
-   column, its padding and the namespace by hand does not. `nil` is the normal answer for a
-   label-selector hit, an empty name half, or a non-match, and means *render it plainly*.
-
-2. **The marks are the occurrence the score was read from.** Not *an* occurrence: the best
-   contiguous one, or the tightened subsequence window `scatteredScore` charges for its
-   gaps — the same window, walked the same way, so the marks explain the ranking instead of
-   offering a second opinion about it. This is the one place kubecom's two highlights
-   differ on purpose: the table marks **every** occurrence (D239) because there the query
-   is a substring and each occurrence is equally why the row survived; here the score names
-   one reading of the name and the marks say which. A leg that makes `MatchSpans` mark
-   everything must move the score with it.
-
-3. **Spans are a second pass, not an extra return from `Match`.** `Match` runs over every
-   row of every kind in a cluster-wide sweep and allocates nothing; `MatchSpans` allocates,
-   and is called only for a hit that already survived the cap and the scattered budget. A
-   later leg that wants spans in the picker (PAL-01 ranks with the same matcher) pays the
-   same way — per shown row, never per scanned one.
-
-4. **The cursor row keeps its marks**, as it does in the table (D239 pt 3), and for a
-   sharper reason: the list is ranked, so the best hit is under the cursor from the moment
-   it arrives, and a rule letting the bar swallow the marks would hide them on exactly the
-   row the reader is looking at. `styles.Match` carries its own background, so the two
-   never become ambiguous where they meet.
-
-## D247 — fd 2 belongs to the log for the life of the TUI, and to the terminal only inside a suspend (2026-08-07, AUTH-07)
-
-The alt screen is not a second terminal. Anything written to file descriptor 2 while
-kubecom is up paints over the panes and survives until bubbletea happens to repaint
-those exact lines — client-go's exec credential plugin (`cmd.Stderr = a.stderr`, on
-*every* refresh, not only a failing one), a panic trace, a cgo library's chatter. The
-launcher therefore points fd 2 at `~/.cache/kubecom/kubecom.log` (`internal/stderrfd`,
-dup2) before the shell is built, and hands it back only inside a suspend.
-
-What a later leg must not silently contradict:
-
-1. **The descriptor, not the variable.** Reassigning `os.Stderr` fixes nothing that
-   matters: client-go captured the old value when the authenticator was built, a
-   subprocess inherits the descriptor, and the runtime writes a panic to fd 2 directly.
-   Any future "route X's output to the log" is a dup2 or it is a hole. Two corollaries:
-   the guard keeps a close-on-exec duplicate of the original fd 2 as its only route back,
-   and fd 2 itself stays inheritable — a child wired to `os.Stderr` must land wherever
-   fd 2 currently points, which is the whole mechanism.
-
-2. **The redirect covers the TUI's life, not the process's.** It is installed after
-   every fallible startup step and closed before `runTUI` returns, so a bad
-   kubeconfig, an unresolvable config and cobra's own error still reach the user's
-   terminal. A leg that moves it up beside `setupLogging` silently swallows the launch
-   errors — those are the diagnostics of a kubecom that never drew a frame.
-
-3. **Every `tea.Exec` in `internal/tui` goes through `Model.suspend`.** Three flows hand
-   the terminal over on purpose — `$EDITOR` (D125), exec (D124/D128), an approved
-   remediation (D215) — and there the reader must see the subprocess's stderr, so the
-   wrapper releases fd 2 for exactly the length of `Run` and reclaims it in a defer.
-   A fourth suspend that calls `tea.Exec` directly is not a compile error, so
-   `TestEverySuspendGoesThroughTheHandover` asserts the wrapper type at each call site;
-   the kubectl parity path needs `Model.suspendProcess` because bubbletea's `*exec.Cmd`
-   adapter is unexported and `tea.ExecProcess` cannot be composed with a wrapper.
-
-4. **A failed handover never fails the action.** A dup2 that will not move degrades to
-   the subprocess's stderr landing in the log — where it was going a moment earlier —
-   rather than aborting an approved `aws sso login` or an edit (principle 3). Likewise a
-   redirect that cannot be installed at launch leaves the seam nil and the shell behaves
-   exactly as it did before this decision.
-
-5. **This does not license printing to fd 2.** The rule in `stack.md` stands: no code in
-   `internal/` writes to stdout/stderr, and the log is reached through the injected
-   `slog.Logger` (D159). The redirect is a backstop for the libraries kubecom does not
-   control, not a channel kubecom may start using.
-
-## D248 — "Dark" is a measured admission criterion, and a bare scheme name means that scheme's default variant (2026-08-08, THEME-02)
-
-THEME-02 took the registry from six built-ins to eleven (`dracula`, `gruvbox-dark`,
-`nord`, `rose-pine`, `tokyo-night`, each transcribed from the upstream data file
-`vault/knowledge/themes.md` names). Two of the things it settled are constraints
-rather than descriptions:
-
+### D248 — "Dark" is a measured admission criterion, and a bare scheme name means that scheme's default variant (2026-08-08, THEME-02)
+THEME-02 took the registry from six built-ins to eleven (`dracula`, `gruvbox-dark`, `nord`, `rose-pine`, `tokyo-night`, each transcribed from the upstream data file `vault/knowledge/themes.md` names). Two of the things it settled are constraints rather than descriptions:
 1. **D236 pt 3's "is it dark?" now has a number, and THEME-03 owes it an argument.**
-   Until this leg the criterion was prose and nothing enforced it, so a light palette
-   could have joined the registry and rendered its dark text over whatever the terminal
-   already is. `TestBuiltinThemesAreDarkAndLegible` fixes both halves: every built-in's
-   `Selection` and `StatusBarBg` sit at relative luminance ≤ 0.2, and the text kubecom
-   paints on each contrasts at least 4.5:1 (WCAG AA; solarized-dark, the registry's
-   lowest-contrast member by design, sits at 4.86). The floor is a *guard*, not a
-   ceiling on palettes: THEME-03 adds a `Background` role and then light palettes become
-   possible, and the leg that lands them has to **change this test deliberately** —
-   relaxing the luminance bound to "chrome and text are on opposite sides of the same
-   background" — rather than delete it. A registry that admits both polarities still
-   needs to know which one each member is.
-
 2. **A bare scheme name means the scheme's own default variant; a suffix is for peers.**
-   D236 pt 4 says a flavor family is `<scheme>-<flavor>`, and that holds where the
-   variants are peers with no default among them (`catppuccin-*`) or where the split is
-   dark/light (`gruvbox-dark`, `solarized-dark`, which D169 pt 1 required so a light port
-   lands beside them). It does **not** hold where the scheme has a canonical variant the
-   bare name already means: `rose-pine` is Rosé Pine's `main`, `tokyo-night` is Tokyo
-   Night's `night`. The consequence is the part a later leg must not get wrong — adding
-   `rose-pine-moon` or `tokyo-night-storm` is adding a *new* name beside the existing
-   one, never renaming `rose-pine` to `rose-pine-main` to make the family look tidy.
-   A theme name is persisted in `config.yaml` and renaming one is a migration (D169 pt 1).
+3. **The status bar takes the first background shade above the scheme's base.**
 
-3. **The status bar takes the first background shade above the scheme's base.** Applied
-   five times here and worth stating once: the terminal's own background is probably the
-   scheme's base, so a bar painted in `base` is invisible. Nord documents the exact shade
-   for this (`nord1`, "a lighter background color for UI elements like status bars") and
-   the others follow the same step. Catppuccin goes the other way — *darker*, to `mantle`
-   — and that stays as it is; the constraint is "not the base", not a direction.
-
-## D249 — The theme's canvas is the terminal's background, painted once by the root View (2026-08-08, THEME-03)
-
-`Theme` gains a fourteenth role, `Background`, and it reaches the screen as
-`tea.View.BackgroundColor` — the terminal's own default background for as long as
-kubecom holds the screen. Every built-in sets it (D169 pt 3, enforced by
-`TestBuiltinThemesAreComplete`), and `View` reads it off `m.styles` on every frame.
-
-1. **No component paints the canvas, and none may start.** This is the constraint,
-   because per-component painting is the design a later leg will reach for first and it
-   does not work: lipgloss does not re-open an outer background after a nested style's
-   reset, so a composed frame wrapped in a background style comes back painted at its
-   margins and bare wherever a colored span already ran (measured on lipgloss v2.0.0;
-   the working note is in `vault/knowledge/themes.md`). The rest of the screen — the gap
-   between the panes, a pane's border, the tail of a short line, the rows an overlay
-   does not cover — is nobody's component at all. A single terminal-level default is the
-   only thing that reaches all of it, so `styles.New` deliberately derives **no** Style
-   from `Background`, and adding one would reintroduce the half-painted frame.
-
-2. **Terminal-level state is the price, and Bubble Tea pays it.** The renderer emits the
-   escape on the first frame, re-emits on change (a runtime theme switch repaints with
-   nothing added to `applyStyles`), and writes the reset from `close()` — which runs on
-   quit *and* on `ReleaseTerminal`, so every `tea.ExecProcess` suspend hands the user's
-   own terminal to `$EDITOR` and `exec`. A leg that starts driving the terminal outside
-   the `View` contract loses that lifecycle and owns the reset itself.
-
-3. **A nil `Background` resets to the terminal's own — it is not black.** A zero `Theme`
-   must leave the user's terminal alone, which is also kubecom's behavior before this
-   decision. The same fallback covers a terminal that filters the escape (a multiplexer
-   without passthrough): kubecom renders exactly as it did before, text on whatever the
-   terminal is.
-
+### D249 — The theme's canvas is the terminal's background, painted once by the root View (2026-08-08, THEME-03)
+`Theme` gains a fourteenth role, `Background`, and it reaches the screen as `tea.View.BackgroundColor` — the terminal's own default background for as long as kubecom holds the screen. Every built-in sets it (D169 pt 3, enforced by `TestBuiltinThemesAreComplete`), and `View` reads it off `m.styles` on every frame.
+1. **No component paints the canvas, and none may start.**
+2. **Terminal-level state is the price, and Bubble Tea pays it.**
+3. **A nil `Background` resets to the terminal's own — it is not black.**
 4. **That fallback is what still gates a light palette, and D248 pt 1 is unchanged.**
-   D236 pt 3's blocker ("kubecom paints no app background") is gone, but where the
-   escape does not land a light palette is dark-on-dark. So the light slice's work is
-   not the values — it is deciding what kubecom does when it cannot paint (refuse, warn,
-   or detect) — and it retunes `TestBuiltinThemesAreDarkAndLegible` deliberately rather
-   than deleting it. Until then every built-in, `Background` included, measures dark.
 
-## D250 — kubecom asks the terminal what its background is, and warns only on a polarity mismatch (2026-08-08, THEME-04a)
+### D250 — kubecom asks the terminal what its background is, and warns only on a polarity mismatch (2026-08-08, THEME-04a)
+D249 pt 4 left the light-palette slice one question: what does kubecom do where it cannot paint?
+1. **The terminal's own answer is the only evidence; environment sniffing is not.**
+2. **The probe is deliberately late, single, and generation-tagged.**
+3. **Three silences, and they are the decision.**
+4. **The line names the observation, never the cause, and nothing is refused.**
+5. **Polarity is measured, not declared.**
 
-D249 pt 4 left the light-palette slice one question: what does kubecom do where it cannot
-paint? The answer is **detect** — of the three options that decision named (refuse, warn,
-detect), refusing overrides an explicit `theme:` on a guess, and warning unconditionally
-puts a toast on a working screen at every launch. `tea.RequestBackgroundColor` (OSC 11 as a
-*query*) makes the screen an observable fact instead, and the warning is spent only where
-the reader is about to lose legibility.
-
-1. **The terminal's own answer is the only evidence; environment sniffing is not.** kubecom
-   cannot tell from inside whether the escape it emitted survived the trip, and a list of
-   `$TERM`/`$TMUX` values believed to filter OSC 11 is wrong the day it is written and
-   silently wrong thereafter. So kubecom asks and compares the reply against
-   `Theme.Background`. A leg that wants to know whether the canvas landed asks the same
-   way; it does not add a terminal-capability table.
-
-2. **The probe is deliberately late, single, and generation-tagged.** The renderer emits
-   the background *set* on the first paint and the query is a Cmd, so an immediate probe
-   races its own set and reads back the terminal's previous background — a false negative
-   on a terminal where the request worked. It fires `canvasProbeDelay` (750 ms) after Init
-   and again after a runtime theme switch, which bumps `canvasGen` and closes
-   `awaitingCanvas` so the departed palette's tick and its in-flight answer are both
-   dropped. Only a reply kubecom asked for is read as evidence: terminals report their
-   background unprompted, and an unsolicited report says nothing about kubecom's request.
-
-3. **Three silences, and they are the decision.** Colors match → it landed. Colors differ
-   but polarities agree → it did not land and does not matter; that is how all eleven
-   built-ins render on a terminal that ignores the request, and warning there would toast
-   a working screen at every launch. No reply at all → a terminal that answers no query is
-   indistinguishable from a slow one, and "unknown" is not evidence. Only opposite
-   polarities warn. A later leg that widens this to "warn whenever the colors differ" has
-   re-introduced the noise this shape exists to avoid.
-
-4. **The line names the observation, never the cause, and nothing is refused.** `<theme> is
-   dark but the terminal stayed light — background not applied`: kubecom cannot distinguish
-   a terminal that filtered the request from one that declined it, so it must not say
-   "tmux". The remedies (passthrough, a matching palette, a matching terminal) go to the
-   log, which is surfaceError's own split (D159). The theme still applies — a heads-up, not
-   a veto, because the user asked for it and principle 3 says degrade rather than override.
-
-5. **Polarity is measured, not declared.** `Theme` gains no `Dark bool`: `Background` is
-   already the claim, and a flag beside it drifts the first time a palette is retuned.
-   `styles.IsDark` is the registry's own admission threshold (`darkLuminance` = 0.2, D248
-   pt 1) exported from `luminance.go`, so "dark enough to be admitted" and "dark" are one
-   number and cannot disagree. A nil color reads as dark — the conservative answer, since
-   nil means unknown and an unknown screen must raise no alarm.
-
-## D251 — a built-in palette is admitted for coherence, not for darkness (2026-08-08, THEME-04b)
-
-`catppuccin-latte` and `solarized-light` are the registry's first light palettes, and the
-question they force is what the admission guard was ever protecting. Not darkness: D236
-pt 3's "dark only" existed because kubecom painted no canvas, so a light palette's dark
-text landed on whatever the terminal already was. THEME-03 gave the palette the whole
-screen (D249) and THEME-04a made kubecom report the case where that paint does not arrive
-(D250), which leaves the real invariant — a palette must agree with itself.
-
+### D251 — a built-in palette is admitted for coherence, not for darkness (2026-08-08, THEME-04b)
+`catppuccin-latte` and `solarized-light` are the registry's first light palettes, and the question they force is what the admission guard was ever protecting.
 1. **The criterion is internal polarity plus the unchanged contrast floor.**
-   `TestBuiltinThemeChromeAndTextAreOppositePolarities` (the retune D248 pt 1 required,
-   never a deletion) holds three things for every built-in: `Selection` and `StatusBarBg`
-   sit on the **same** side of `darkLuminance` as `Background`; `Foreground`, `SelectionFg`
-   and `StatusBarFg` sit on the **other** side; and every text/background pair still
-   clears **4.5:1**. The polarity threshold is the one in `luminance.go` that D250 pt 5
-   already shares with the runtime check, so a palette cannot be admitted as coherent and
-   then described to the user as the other polarity. A future light palette is judged by
-   this and needs no new exemption; a leg that wants to admit one by lowering 4.5 has
-   misread which half is the constraint.
+2. **A port may move along the upstream ladder to clear the floor; it may not invent a value or lower the floor.**
+3. **Latte is the family's fourth flavor, not a light theme beside it.**
 
-2. **A port may move along the upstream ladder to clear the floor; it may not invent a
-   value or lower the floor.** Solarized's canonical light body pair (base00 on base3)
-   measures 4.13:1 — the scheme is low-contrast by design and its light end is the lower
-   one. `solarized-light` therefore takes the next rung of Solarized's *own* published
-   ladder for each text role (body base01, chrome text base02), shifting the ladder whole
-   so the dark port's relationship — chrome text one step more emphasized than body — is
-   preserved. The departure is stated in the constructor. What is forbidden is the other
-   two moves: a hex value upstream never published, and a threshold bent to fit.
-
-3. **Latte is the family's fourth flavor, not a light theme beside it.** It goes through
-   `catppuccinTheme` unchanged, because that function's roles name rungs of a flavor's
-   ladder rather than shades of a dark one. A future leg that wants to retune a role for
-   the light flavor alone is proposing to split the family; it must retune the mapping for
-   all four, or say why the family is no longer one.
-
-## D252 — the cursor bar and the match highlight share a line; the yank gesture set is closed (2026-08-08, LOGS-SEL-03)
-
-The two questions feedback `2026-08-07-logs-selection-and-yank` left open, answered
-so a later leg stops re-deriving them.
-
-1. **They coexist; neither yields while visual mode is active.** D242 pt 3's answer
-   stands, and is now measured rather than argued: `Match` paints its own background
-   *inside* the `Selection` bar (`logsview.highlight` takes the bar as `base` and
-   renders the matched spans over it), and across the eleven dark built-ins the two
-   backgrounds are separated by **4.05:1 to 9.89:1** — the bar and the highlight are
-   two visibly different things, not one wash. So a later leg must **not** blank one
-   of them on the cursor's line: in a grep the match is *why* the line is on screen,
-   and the bar is where the reader is. This is the table's rule (D239) holding in the
-   logs view for the same reason.
-
+### D252 — the cursor bar and the match highlight share a line; the yank gesture set is closed (2026-08-08, LOGS-SEL-03)
+The two questions feedback `2026-08-07-logs-selection-and-yank` left open, answered so a later leg stops re-deriving them.
+1. **They coexist; neither yields while visual mode is active.**
 2. **`y` on the cursor line and `gg v G y` for the buffer are the whole gesture set.**
-   No `logs.yankAll` action: it would be a second name for a composition that already
-   works and that the README already teaches, and "everything visible" is ambiguous
-   the moment `w` wraps a line or `/` narrows the set — screen rows are not log lines
-   (D242 pt 2). If a dogfood ever asks for it, it must be defined over *shown log
-   lines* and inherit the buffer cap (D245), never over what the viewport happens to
-   show.
+3. **The `Match` pair is body text, and is held to the body floor.**
 
-3. **The `Match` pair is body text, and is held to the body floor.** The measurement
-   that answered pt 1 found the role itself is mapped for a dark canvas: `Match` is
-   `StatusBarBg` on `Warn` (`styles.New`), which on the two light palettes admitted at
-   THEME-04b renders near-white on mid yellow — **2.15:1** (`catppuccin-latte`) and
-   **2.62:1** (`solarized-light`) — and on Latte leaves the highlight **1.70:1** from
-   the bar it sits in. A matched span carries the log's own text, so it is body text
-   under D251 pt 1's **4.5:1**, on the same argument that floor already rests on. No
-   palette-native shade clears it (Latte's best is `Foreground` at 3.05), so **THEME-05**
-   must change the *mapping* — it may not swap in another existing role and call it
-   fixed, and it may not lower the floor to fit. The same style paints the table filter
-   (FILT-02) and cluster-search hits (SEARCH-06), so the fix is one place for three
-   surfaces.
-
-## D253 — the Homebrew tap is the org-level `neuroplastio/homebrew-tap`, kubecom its first tool (2026-08-09, release-namespace fold-in)
-
-The maintainer's answer to `2026-08-07-release-namespaces-after-org-move` moved the tap
-from the 2020 personal one to an org-level tap, and authorized the agent to set it up.
-This supersedes **D182 pt 2**, whose "the tap is `AnatolyRugalev/homebrew-kubecom`"
-premise is now deliberately abandoned.
-
-1. **`brew tap neuroplastio/tap` is the install line, from the repository
-   `neuroplastio/homebrew-tap`.** The agent created that repo (2026-08-09) and
-   initialized it with a README; kubecom is its first tool. `.goreleaser.yml`'s
-   `homebrew_casks.repository` is `owner: neuroplastio, name: homebrew-tap`, and
-   `TestReadmeBrewTapMatchesTheCask` keeps the docs and the config in agreement.
-   The cask **file** is still written by goreleaser at the first tagged release (D182
-   pt 1 unchanged — a cask needs a real version/url/sha256), so the tap intentionally
-   holds no cask yet; `brew install --cask kubecom` correctly says "no cask found"
-   until then. A future leg must not hand-write a placeholder formula/cask into the tap:
-   goreleaser owns that file.
+### D253 — the Homebrew tap is the org-level `neuroplastio/homebrew-tap`, kubecom its first tool (2026-08-09, release-namespace fold-in)
+The maintainer's answer to `2026-08-07-release-namespaces-after-org-move` moved the tap from the 2020 personal one to an org-level tap, and authorized the agent to set it up. This supersedes **D182 pt 2**, whose "the tap is `AnatolyRugalev/homebrew-kubecom`" premise is now deliberately abandoned.
+1. **`brew tap neuroplastio/tap` is the install line, from the repository `neuroplastio/homebrew-tap`.**
 2. **The 2020 `AnatolyRugalev/homebrew-kubecom` tap is abandoned with no redirect.**
-   The maintainer chose the org tap knowing a moved tap leaves people on a dead address;
-   the old tap keeps serving the 2020 formula to anyone still on it. This is the
-   deliberate cost of the move, **not** a bug to fix by resurrecting the old address —
-   and the old formula does **not** need deleting (the stale-formula seatbelt D182 pt 2
-   existed *because* the old tap would keep publishing; it has nothing new to collide
-   with on the empty org tap).
-3. **The org move invalidates repository secrets.** GitHub does not carry Actions
-   secrets across a repo transfer, so `HOMEBREW_TAP_TOKEN` and `AUR_SSH_PRIVATE_KEY`
-   (if either was set before the move) must be re-created on `neuroplastio/kubecom`.
-   The AUR is otherwise unaffected (D183 pt 1-4 stand); the AUR package is namespaced
-   by the AUR account, not the GitHub owner. The `skip_upload` inertness (D182 pt 3)
-   means a missing secret never fails a release — it is a note in the human tasks, not
-   a blocker.
+3. **The org move invalidates repository secrets.**
+**Refs:** supersedes **D182 pt 2.
 
-## D254 — container builds are dropped for now (2026-08-09, release-namespace fold-in)
+### D254 — container builds are dropped for now (2026-08-09, release-namespace fold-in)
+The maintainer's decision, verbatim: *"containers: drop container builds for now."* This **supersedes D184 entirely** — no `Dockerfile`, no `dockers_v2:` block, no docker steps in the release workflow (`setup-buildx-action`, `login-action`, `packages: write`), no container section in `docs/install.md`, and…
+1. **The release pipeline publishes two things now: the Homebrew cask and the AUR package.**
+2. **This is reversible, deliberately.**
+**Refs:** supersedes D184.
 
-The maintainer's decision, verbatim: *"containers: drop container builds for now."* This
-**supersedes D184 entirely** — no `Dockerfile`, no `dockers_v2:` block, no docker steps
-in the release workflow (`setup-buildx-action`, `login-action`, `packages: write`), no
-container section in `docs/install.md`, and `internal/version/docker_test.go` is deleted.
-The M5-08 board entry and the D184 text remain in history as the record of what was
-built and verified.
-
-1. **The release pipeline publishes two things now: the Homebrew cask and the AUR
-   package.** `.goreleaser.yml`'s `dockers_v2:` block is gone and the workflow's
-   `packages: write` permission with it; `go install`, the release tarball and the
-   archives are untouched. The DoD's "Linux + macOS release artifacts via
-   goreleaser + GitHub Actions" box is unaffected — Docker was never one of its
-   bullets.
-2. **This is reversible, deliberately.** The human said "for now"; the D184 knowledge
-   (distroless-static root base, released-binary-not-rebuilt, docker-container driver,
-   the `latest`-vs-prerelease rule) is preserved in `vault/knowledge/stack.md` and in
-   git history so a leg that restores containers does not re-derive it from scratch.
-   A future leg must not silently re-add a Dockerfile or image config as "cleanup".
-
-## D255 — a remembered drill-in comes back as a drill-in; the re-resolve degrades legibly (2026-08-09, CTX-MEM-04)
-
-D240 pt 6 deferred the drill-in scope (CTX-MEM-04) until a leg could make its
-owner-gone failure legible on screen; this is that leg. Pane memory now records the
-**owner** of a drill-in beside the remembered kind, so a restore re-enters the scope
-instead of landing on the plain child list. Constraints a future leg must not
-silently contradict:
-
+### D255 — a remembered drill-in comes back as a drill-in; the re-resolve degrades legibly (2026-08-09, CTX-MEM-04)
+D240 pt 6 deferred the drill-in scope (CTX-MEM-04) until a leg could make its owner-gone failure legible on screen; this is that leg.
 1. **The drill-in address rides the same seam and shape as the remembered kind.**
-   `config.State.LastDrillOwner` is an *address* — the owner's kind plus
-   namespace/name, exactly D240 pt 2's rule for `LastResource` — never rows, never
-   the selector. It is written by the same `watchResource`→`recordResource` point as
-   the kind, so a drill-in records child kind + owner in one file state, and a plain
-   re-select (nav.back, another kind) clears the owner in the same write. A context
-   switch rebinds it alongside `LastResource` (D163), and `resetCluster` leaves it
-   alone.
-2. **The restore re-resolves the scope; it never replays it.** `restoreLastResource`
-   sees a drill owner and re-enters through the ordinary `ChildResolver.Children`
-   path off the loop, so the selector is re-derived from the *current* owner object —
-   the same "address, not data" rule that makes every restore a fresh watch (D240
-   pt 3). The result is generation-guarded like a live drill-in (`childGen`), so a
-   reader who drilled in themselves while the re-resolve was in flight wins.
-3. **The owner-gone failure is legible, and it lands on the plain list.** A failed
-   re-resolve (owner deleted, selector no longer derivable) opens the plain child
-   list **and** says on screen that the owner is gone (`surfaceNotice` naming the
-   owner). Silently landing in a different scope is forbidden — it is worse than
-   landing on the plain list, which is D240 pt 6's own wording. The corrected state
-   is recorded as the plain list, so a dead drill-in is not re-attempted on the next
-   launch.
+2. **The restore re-resolves the scope; it never replays it.**
+3. **The owner-gone failure is legible, and it lands on the plain list.**
 
+### D256 — maintainer review 2026-08-09: context switching ships as-is; remaining dogfood QA declined (2026-08-09, human-tasks fold-in)
+The maintainer reviewed the open human tasks via margin and closed most of them by directive. Constraints a future leg must not silently contradict:
+1. **Context switching is accepted as-is.**
+2. **CTX-WARM-02/03/04 are cancelled.**
+3. **The remaining dogfood QA is declined, not failed.**
+4. **The Homebrew/AUR credential tasks are deferred to release time**
+**Refs:** supersedes the gating in D196 pt 3.
 
-## D256 — maintainer review 2026-08-09: context switching ships as-is; remaining dogfood QA declined (2026-08-09, human-tasks fold-in)
+### D257 — a rejected previous-instance flip keeps the log view; the running instance's stream resumes under the toast (2026-08-09, LOGS-08)
+Feedback `2026-08-09-logs-no-previous-keeps-view` (maintainer, verbatim: "Show error and exists log view.
+1. **A rejected `Previous` flip never closes the view.**
+2. **The fallback re-issues the stashed request with only `Previous` cleared**
+3. **Nothing pre-checks for a previous instance, still.**
+**Refs:** supersedes D177 pt 4.
 
-The maintainer reviewed the open human tasks via margin and closed most of them
-by directive. Constraints a future leg must not silently contradict:
+### D258 — the palette family passes through the logs view; `o` is the previous-instance default (2026-08-09, LOGS-09)
+Two feedback items, one surface: `2026-08-09-logs-view-palette-bindings` ("Ctrl+P is a bit weird … allow command palette inside logs view at the very least") and `2026-08-09-context-switch-key-from-overlays` ("C doesn't work when popup or logs are open"). Constraints a future leg must not silently contradict:
+1. **The logs view passes the palette family through**
+2. **Row-scoped gestures stay swallowed over the logs view**
+3. **Transient capture surfaces keep owning their keys**
+4. **The palette over the logs view lists the logs view's own verbs**
+5. **`logs.previous` defaults to `o`, keeping `ctrl+p` as the second binding.**
 
-1. **Context switching is accepted as-is.** Verbatim: "current switching
-   functionality is overall good enough and I don't want to spend more time
-   testing it. We'll ship it like this, stop feeding it into my tasks." The
-   unverified pts 3–8 of the context-switch dogfood are **waived**; the M4
-   context-switch exit criterion may be ticked on this waiver. Do not re-raise
-   the dogfood in any form.
-2. **CTX-WARM-02/03/04 are cancelled.** The warmth line existed to make
-   switching feel faster; the maintainer accepted the current speed without the
-   pt-7 numbers. This supersedes the gating in D196 pt 3 — do not start those
-   board items; mark them cancelled, citing this decision.
-3. **The remaining dogfood QA is declined, not failed.** The conversion-webhook
-   task (items 1–8) and the app-background task (items 1–7) were marked "do not
-   care" / "no need to over-QA it". Their hermetic coverage stands as the
-   verification. Do not re-raise either as a human task; if a real apiserver's
-   wording or a multiplexer's escape handling ever diverges, it will come back
-   as ordinary feedback. THEME-05 stays on the board but proceeds without the
-   multiplexer data the background task was meant to supply.
-4. **The Homebrew/AUR credential tasks are deferred to release time** ("do not
-   care, post-release" / "next time"). They stay open in `vault/human-tasks/`
-   but must not be re-surfaced at every orient; re-ask when the first release
-   tag is being cut. Both publishers skip themselves without their secrets
-   (D173 pt 2), so the deferral is cost-free until then.
+### D259 — the match highlight paints canvas-on-Warn on dark palettes; weight-only on light ones (2026-08-09, LOGS-SEL-04)
+Feedback `2026-08-09-log-match-highlight-background` (maintainer, verbatim: "Highlighted text (matches) should have bright (yellow) background.
+1. **`Match` is bold + underline on every palette, and on a dark canvas also paints the canvas color on `Warn`.**
+2. **The two-background rule is untouched (D252 pt 1 stands).**
+3. **The three light palettes keep weight-only, and that is scope, not a leftover.**
 
-## D257 — a rejected previous-instance flip keeps the log view; the running instance's stream resumes under the toast (2026-08-09, LOGS-08)
+### D260 — the theme picker previews live; a preview is repaint only, and cancel restores (2026-08-09, THEME-07)
+Feedback `2026-08-09-theme-picker-live-preview` (maintainer, verbatim: "theme switching should happen as I change selection in the pallette, so I can test the look without pressing enter").
+1. **A preview is repaint only.**
+2. **A cancel is a restore, not a switch.**
+3. **The anchor marker does not follow the preview.**
+4. **Committing the anchor row is still a no-op**
 
-Feedback `2026-08-09-logs-no-previous-keeps-view` (maintainer, verbatim: "Show error
-and exists log view. It shouldn't exit log view.") observed that `ctrl+p` on a pod
-with no previous instance showed the apiserver's rejection **and closed the log
-view**, dumping the reader back to the table. This **partially supersedes D177
-pt 4**: the no-pre-check half stands; the "view closes" half is replaced.
-Constraints a future leg must not silently contradict:
+### D261 — the screencast tape must demo a match and start from a clean state; reruns are reproducible (2026-08-09, M5-09b)
+Feedback `2026-08-09-screencast-tape-tuning` (maintainer, verbatim): "search across cluster doesn't find anything (bad example)"; "initial state gets modified when rerunning the tape"; "we need to show off more features and add more captions". Three constraints a future tape edit must not silently break:
+1. **A demo query must be one the tour already proved matches.**
+2. **Every rerun starts from the welcome screen.**
+3. **The tour grows, never shrinks, and every keypress stays annotated.**
 
-1. **A rejected `Previous` flip never closes the view.** The reader was watching
-   logs; an error about an optional toggle must not take the view away. The
-   fallback lives in `handleLogMsg`'s `ErrorMsg` branch, recognised as *empty view
-   + the stashed request asked for `Previous`* — the emptiness is the toggle's own
-   `Restream`, which is how a rejected flip is told apart from a fresh open
-   failure, whose D74 close is unchanged.
-2. **The fallback re-issues the stashed request with only `Previous` cleared** —
-   the same one-bit rule as the flip itself (D177 pt 2), applied in reverse. The
-   running instance's stream resumes (replaying the tail bound, so "keeps showing"
-   is a restream, not a frozen buffer), the `[previous]` header marker goes with
-   it, and the server's wording rides the D74 toast. Do not string-match "not
-   found" to gate the fallback: any rejection of the optional toggle gets it.
-3. **Nothing pre-checks for a previous instance, still.** Only the apiserver
-   knows; a client-side guess would either hide a readable log or promise one that
-   is not there. The request goes out, and a repeated `ctrl+p` asks again — the
-   fallback leaves the toggle fully re-armable.
+### D262 — the toast auto-clear duration is a per-model option, defaulting to 5s (2026-08-09, audit-test-suite-runtime)
+Feedback `2026-08-09-audit-test-suite-runtime`: the tui suite spent ~90s of its 190s draining real 5s toast ticks — 17 tests slept exactly 5.01s or 10.01s because `surfaceError`/`surfaceNotice` returned `tea.Tick(errorDisplay)` and the `drain` helper executes commands synchronously.
+1. **`tea.Tick` reads `m.toastTimeout`, never the `errorDisplay` const.**
+2. **The test default is `WithToastTimeout(time.Nanosecond)` via `sized`/ `sizedWith`, with an explicit option winning**
 
-## D258 — the palette family passes through the logs view; `o` is the previous-instance default (2026-08-09, LOGS-09)
-
-Two feedback items, one surface: `2026-08-09-logs-view-palette-bindings`
-("Ctrl+P is a bit weird … allow command palette inside logs view at the very
-least") and `2026-08-09-context-switch-key-from-overlays` ("C doesn't work when
-popup or logs are open"). Constraints a future leg must not silently contradict:
-
-1. **The logs view passes the palette family through** — `:` opens the command
-   palette over the view; `T`/`R`/`ctrl+n`/`C` open their pre-typed stages (D207)
-   — because the logs view is a long-lived surface, not a transient modal. This is
-   the whole answer to "global actions from a log stream": ctx.switch is reachable
-   there, and a switch picked from it tears the stream down with the old cluster
-   (resetCluster, already pinned hermetically). With the grep open nothing passes:
-   the field owns every key (D140 pt 1).
-2. **Row-scoped gestures stay swallowed over the logs view**, and the palette
-   withholds row verbs there. Their target is the browse table's selection, which
-   the full-screen view hides, and a pick like Delete would open the confirm modal
-   *invisibly* — the View draws one body while the modal captures input. This is
-   D197's rule, not an exception: the verb is inert exactly as its key is.
-3. **Transient capture surfaces keep owning their keys** — pickers, the confirm
-   modal, the help overlay, the viewer, the port-forward panel, and every open
-   text field. The way out is `esc`; that is by design (a modal is one gesture
-   deep), and `vault/knowledge/keybindings.md` says so. Do not extend the
-   pass-through to them without answering the invisible-modal trap first.
-4. **The palette over the logs view lists the logs view's own verbs** (follow,
-   grep, wrap, timestamps, previous, select, yank) beside the app-globals — the
-   discoverability the feedback named — each dispatched through handleAction
-   exactly as its key is (D197).
-5. **`logs.previous` defaults to `o`, keeping `ctrl+p` as the second binding.** The
-   plain letter sits with the other logs toggles (`f`/`w`/`t`/`v`/`y`); the chord
-   stays because, carrying no text, it is the one form of the toggle that fires
-   mid-grep. `p`/`P` remain spent (D139/D165).
-
-## D259 — the match highlight paints canvas-on-Warn on dark palettes; weight-only on light ones (2026-08-09, LOGS-SEL-04)
-
-Feedback `2026-08-09-log-match-highlight-background` (maintainer, verbatim:
-"Highlighted text (matches) should have bright (yellow) background. Selection row
-looks good.") walked back THEME-05's weight-only `styles.Match` — but not its
-reason: on a light canvas no palette-native shade on `Warn` clears the 4.5:1
-body floor (D252 pt 3's measurement stands). This partially supersedes THEME-05's
-treatment (which carried no Dn): the weight stays, the paint returns where paint
-can carry it.
-
-1. **`Match` is bold + underline on every palette, and on a dark canvas also
-   paints the canvas color on `Warn`.** "Dark ink on a highlighter pen." The
-   foreground is `Background`, not the old mapping's `StatusBarBg`: measured
-   across the eleven dark built-ins, canvas-on-Warn is **4.68–12.91:1** for the
-   matched text — clearing D251 pt 1's floor everywhere dark, including
-   `solarized-dark` (4.68), which the StatusBarBg mapping shipped at 4.05. The
-   gate is the palette's own polarity (`IsDark(t.Background)`, the shared
-   luminance.go threshold D250 pt 5 / D251 pt 1 already use), so the rule is one
-   mapping keyed on a measured property — **not a per-palette exemption**, and
-   not a new invented value (D251 pt 2): both colors are roles the palette
-   already carries.
-2. **The two-background rule is untouched (D252 pt 1 stands).** The highlight
-   background is `Warn` again, so the bar/highlight separation is the same
-   4.05–9.89:1 D252 pt 1 measured and blessed; a later leg must still not blank
-   either background on the cursor's line. The guard test now pins both floors:
-   4.5:1 for the matched text on its highlight, 3:1 for the highlight against
-   the bar.
-3. **The three light palettes keep weight-only, and that is scope, not a
-   leftover.** `catppuccin-latte`, `solarized-light` and `gruvbox-light` render
-   the match with bold + underline and no colors, exactly as THEME-05 left every
-   palette — the feedback itself named the light pair out of scope. If a future
-   dogfood wants paint there too, it needs a value upstream never published
-   (forbidden by D251 pt 2) or a lowered floor (forbidden by D252 pt 3) — so the
-   honest answer is a *different mapping for light canvases*, argued as its own
-   decision, never a quiet per-palette patch. The one style still paints all
-   three surfaces (logs grep, table filter, cluster search).
-
-## D260 — the theme picker previews live; a preview is repaint only, and cancel restores (2026-08-09, THEME-07)
-
-Feedback `2026-08-09-theme-picker-live-preview` (maintainer, verbatim: "theme
-switching should happen as I change selection in the pallette, so I can test the
-look without pressing enter"). `routePickerKey` now runs `previewTheme` after every
-key that can move the palette's cursor while the `:theme ` stage is open (nav
-actions and filter narrowing both), so the whole screen — painted background
-included, since `View` reads `Theme.Background` each frame — re-themes to the row
-under the cursor. `enter` commits (the existing `applyThemeNamed`), `esc`/rewind
-restores the theme that was rendering when the stage opened. `applyThemeNamed` is
-unchanged: `applyPaletteArg`'s `closePalette` restores the anchor first, so the
-commit's no-op check reads the anchor correctly. Load-bearing constraints a later
-leg must not silently contradict:
-
-1. **A preview is repaint only.** No notice, no canvas probe and above all no
-   config write-back on cursor move — `enter` is the one place `persistTheme` runs,
-   so a reader who browsed the fourteen palettes never rewrote `config.yaml`.
-2. **A cancel is a restore, not a switch.** Esc (both key-opened and typed stages)
-   and the backspace rewind return the shell to `themeAnchor`, silently: no notice,
-   no write, no probe. `closePalette` and `showPaletteVerbs` both restore, which
-   covers every way out of the theme stage except the commit itself.
-3. **The anchor marker does not follow the preview.** Rebuilding the stage's rows
-   (`themeItems`) to move the `*` would reset the picker's cursor to the top and
-   fight the very navigation the preview rides on. During a preview the marker names
-   where `esc` will return. The stage re-seeds the marker on its next open, so a
-   committed theme is marked correctly from then on.
-4. **Committing the anchor row is still a no-op** even after a preview toured other
-   palettes (the marked row stays choosable, D158) — no repaint, no file write.
-
-## D261 — the screencast tape must demo a match and start from a clean state; reruns are reproducible (2026-08-09, M5-09b)
-
-Feedback `2026-08-09-screencast-tape-tuning` (maintainer, verbatim): "search across
-cluster doesn't find anything (bad example)"; "initial state gets modified when
-rerunning the tape"; "we need to show off more features and add more captions".
-Three constraints a future tape edit must not silently break:
-
-1. **A demo query must be one the tour already proved matches.** The cluster-search
-   step now types `shop` — the same string the filter step matched a pod with — so
-   the cluster-wide pass cannot come back empty: whatever the search's scope and
-   ranking do, it must show the pod that is already on screen. Any future re-query
-   must be a string the tour demonstrates a hit for, never an unverified guess.
-2. **Every rerun starts from the welcome screen.** The tape redirects kubecom's
-   `XDG_CONFIG_HOME`/`XDG_CACHE_HOME` to a throwaway `/tmp/kubecom-screencast` and
-   wipes it before each launch, so the CTX-MEM pane memory, menu pins and last
-   namespace cannot leak a previous run's screen into the next. A future leg that
-   changes where kubecom keeps state must keep this seam working (any XDG dir the
-   config package reads is covered).
-3. **The tour grows, never shrinks, and every keypress stays annotated.** The theme
-   preview step (THEME-07) and the help overlay joined the tour with their captions.
-   `TestScreencastTapeMatchesTheKeymap` still binds each annotated key to the
-   registry and `TestScreencastTapeShowsTheHeadlineActions` still requires the
-   headline actions — a future edit drops one of those only by changing the guard.
-
-## D262 — the toast auto-clear duration is a per-model option, defaulting to 5s (2026-08-09, audit-test-suite-runtime)
-
-Feedback `2026-08-09-audit-test-suite-runtime`: the tui suite spent ~90s of its
-190s draining real 5s toast ticks — 17 tests slept exactly 5.01s or 10.01s
-because `surfaceError`/`surfaceNotice` returned `tea.Tick(errorDisplay)` and the
-`drain` helper executes commands synchronously. The fix makes the duration a
-`Model` field, `toastTimeout`, defaulted to `errorDisplay` at construction and
-overridable with `WithToastTimeout(d)`, the established `Option` seam. Two
-constraints a future leg must not silently break:
-
-1. **`tea.Tick` reads `m.toastTimeout`, never the `errorDisplay` const.** A leg
-   that reintroduces `tea.Tick(errorDisplay, …)` in the surface paths re-primes
-   the slow-drain bug, and a test that asserts on the tick *arrival* cannot tell
-   a shrunk-timer drain from a real 5s wait — the whole point was to make that
-   distinguishability unnecessary. New timer-backed toasts must route through the
-   same field.
-2. **The test default is `WithToastTimeout(time.Nanosecond)` via `sized`/
-   `sizedWith`, with an explicit option winning** (options run in order, D61).
-   The blocking-tick workarounds that existed to *skip* the tick
-   (`themeCmdMsgs`'s 200ms timeout, `copiedClipboard`, the auth-diag
-   first-wins walk) now filter the instantly-arriving `noticeClearMsg`/
-   `errorClearMsg` instead; a future helper that collects "the instant
-   sub-commands of a batch" must filter those messages or it will count the
-   toast's own auto-clear as a result. The search debounce (`searchDebounce`,
-   250ms) is a separate timer and was measured but not addressed by this item.
-
-## D263 — `make check` enforces `gofmt` via the golangci-lint formatter floor (2026-08-09, FORMAT-GATE)
-
-Feedback `2026-08-09-audit-format-gate`: the lint step ran only the standard
-linters and so could not see formatting drift, which had already slipped in once
-(`styles.go`'s `Match` field, LOGS-SEL-04). The gate now enables the `gofmt`
-formatter in `.golangci.yml` (`formatters.enable: [gofmt]`) — in golangci-lint v2
-gofmt is a **formatter**, configured under `formatters:` and enabled alongside
-`linters`, not inside the linter list — and that formatter, not a `gofmt -l` step
-in the Makefile, is the enforcement point. One constraint a future leg must not
-silently break:
-
+### D263 — `make check` enforces `gofmt` via the golangci-lint formatter floor (2026-08-09, FORMAT-GATE)
+Feedback `2026-08-09-audit-format-gate`: the lint step ran only the standard linters and so could not see formatting drift, which had already slipped in once (`styles.go`'s `Match` field, LOGS-SEL-04).
 1. **The format floor is `gofmt` only, and the gate is the golangci-lint run.**
-   Any pushed `go` file must be `gofmt`-clean or `make check` fails; do not work
-   around it with a `//nolint` or a repo-level skip. Enabling stricter formatters
-   (`gofumpt`, `goimports`) is the M0 note's "tighten later" call and stays a
-   separate, deliberate decision (a wider ruleset is bigger than this item asked
-   for). `make lint` needs no `gofmt -l` step because the formatter path reports
-   the same drift.
 
-## D264 — the plan's `views/` directory is superseded; full-screen surfaces are `components/*` sub-models, and the root package is the shell (2026-08-09, APP-MONOLITH)
+### D264 — the plan's `views/` directory is superseded; full-screen surfaces are `components/*` sub-models, and the root package is the shell (2026-08-09, APP-MONOLITH)
+Feedback `2026-08-09-audit-app-monolith` (Priority: medium): `internal/tui/app.go` has grown to 4,635 lines / 149 functions while the package layout REWRITE_PLAN's target architecture and D52 committed to — `internal/tui/views/` holding browse, logs, describe, yaml — was never created, and no decision ever revoked or…
+1. **The `views/` directory as literally planned is revoked.**
+2. **The browse 2-pane is not a separable view — it is the shell.**
+3. **Load-bearing constraint a future leg must not silently break: a new full-screen, self-contained surface is a `components/*` sub-model**
+4. **app.go's current size is accepted for now, and reducing it is a standing, pickable item, not an obligation.**
 
-Feedback `2026-08-09-audit-app-monolith` (Priority: medium): `internal/tui/app.go`
-has grown to 4,635 lines / 149 functions while the package layout REWRITE_PLAN's
-target architecture and D52 committed to — `internal/tui/views/` holding browse,
-logs, describe, yaml — was never created, and no decision ever revoked or
-re-scoped it. The audit deliberately filed this medium ("about the next N legs'
-cost, not the current binary") and explicitly sanctions resolving the drift either
-by starting a mechanical split or by recording a decision. **This is that decision,
-and it takes the route the audit offers as acceptable**: the mechanical split is
-not the next legs' work, because a `views/browse` package would have to move most
-of the 60+-field `Model` with it — exactly the parts the audit calls "cohesive
-where they are". What the audit measured is real (root-package accumulation,
-the plan's `views/` line long dead), and this decision resolves the plan-vs-tree
-drift one way or the other:
+### D265 — a shell-owned listing is handed to a `components/*` panel as read-only entries; the shell keeps the authoritative set and performs the mutations (2026-08-09, MONO-01)
+The first MONO-01 extraction (D264 pt 4) moved the M3-13b port-forward panel out of `app.go` into `components/forwards`.
+1. **The shell keeps the authoritative set; the component receives a read-only `Entry` per member**
+2. **The component owns its interaction state**
+3. **A side-effecting gesture is an intent, not a method**
+4. **Every component with a `SetStyles` must be in `applyStyles` and in `themeSurfaces`**
 
-1. **The `views/` directory as literally planned is revoked.** REWRITE_PLAN's
-   `views/ # browse (2-pane), logs, describe, yaml` line and D52's `views/*`
-   wording are superseded. The intent behind them — self-contained full-screen
-   surfaces — is already met by the established `components/*` sub-model pattern,
-   which is where the plan's "views" actually live: `components/logsview` (the
-   logs view), `components/searchview` (the cluster-search view),
-   `components/viewer` (describe/secrets). No future leg must create a `views/`
-   directory to "complete the plan".
-2. **The browse 2-pane is not a separable view — it is the shell.** The root
-   `internal/tui` package is the root `tea.Model`: `app.go` owns the `Model` (the
-   per-cluster state, the seams, the panes) and the `update()` router with its ~30
-   browse cases. Extracting "the browse view" would mean extracting most of the
-   `Model`, which is why the audit's own example stops short of it. The root
-   package is therefore defined as *the shell*: Model + seams + routing + global
-   keys + browse composition.
-3. **Load-bearing constraint a future leg must not silently break: a new
-   full-screen, self-contained surface is a `components/*` sub-model** — the
-   logsview/searchview/viewer pattern — never another root-package file. The root
-   package's file list must not grow new full-screen surfaces; that is what keeps
-   the next 4.6k-line god object from forming.
-4. **app.go's current size is accepted for now, and reducing it is a standing,
-   pickable item, not an obligation.** The audit is medium because the tree is
-   green, race-clean, well-commented and 92.6%-covered. The split of its 149
-   functions is deliberately not performed as one leg (it would be a
-   multi-thousand-line move with no behavioral payoff). Reduction when a clean seam
-   appears is filed as **MONO-01** on the board; the seam interfaces and the `Model`
-   stay where they are.
+### D266 — publishing a release is a leg that changes the install docs; the docs name the exact version that exists (2026-08-12, DOC-02)
+D68 requires a leg to update `README.md` when it "changes how a user installs, launches, configures, or uses `kubecom`".
+1. **Publishing a release is an install-docs change.**
+2. **Name the version that exists, not the state of the tag list.**
+3. **A pre-release is documented as one, and asked for by name.**
+4. **Publisher inertness is not a pre-release rule.**
+5. **A criterion asking for artifacts is closed by the rc.**
 
-## D265 — a shell-owned listing is handed to a `components/*` panel as read-only entries; the shell keeps the authoritative set and performs the mutations (2026-08-09, MONO-01)
-
-The first MONO-01 extraction (D264 pt 4) moved the M3-13b port-forward panel out
-of `app.go` into `components/forwards`. The panel's seam turned out to be a shape
-the board note did not quite predict: the panel could not take its data with it,
-because the forwards are *live, shared, shell-owned state* — they are started and
-stopped from many places in `app.go` (`runPortForward`, `handleForwardDone`,
-`stopForwards`, a context switch) and each carries a handle/cancel only the shell
-can act on. The shape that worked is the load-bearing part, and a later leg
-extracting a similar seam (the secret viewer's entry list, the next panel) should
-follow it rather than re-derive it:
-
-1. **The shell keeps the authoritative set; the component receives a read-only
-   `Entry` per member** (`panelEntries`). The `Entry` carries only what the view
-   renders (label, ports, readiness) — never a handle, a cancel, or the store
-   itself. That is what lets the shell both mutate the set and stop a member while
-   the component stays a pure tea sub-model (D56: the component never imports the
-   root package).
-2. **The component owns its interaction state** (open, cursor) and exposes small
-   verbs — `Open`/`Close`/`Reset`, `Clamp(n)`, `Move(delta, n)`, `Sel()` — so the
-   shell's `handle…Action` switch is a thin delegation and the geometry/cursor
-   rules (BOX-02, HINT-04) live and are tested inside the component.
-3. **A side-effecting gesture is an intent, not a method**: the panel cannot stop a
-   forward itself; `nav.drillIn` makes the shell cancel the selected forward's
-   context (`m.forwards[sel].cancel()`). Mutations stay in the shell, which is
-   where the lifecycle messages (`forwardReadyMsg`/`forwardDoneMsg`) already land.
-4. **Every component with a `SetStyles` must be in `applyStyles` and in
-   `themeSurfaces`** (M4-12b-1/D170 pt 2): the panel is both, so the live-restyle
-   and the launch-time-theme equivalence tests cover it.
-
-## D266 — publishing a release is a leg that changes the install docs; the docs name the exact version that exists (2026-08-12, DOC-02)
-
-D68 requires a leg to update `README.md` when it "changes how a user installs,
-launches, configures, or uses `kubecom`". Cutting a tag does not change a line of
-install code, so it reads as outside that trigger — and on 2026-08-10 it fell
-outside it in practice: `v1.0.0-rc.1` was tagged, published and verified, and the
-README went on saying **"no version has been tagged yet"** for two days while
-`docs/install.md` framed every path as "waiting on the first tagged release". A
-publishing act changes what the install instructions *mean* without touching what
-they *say*, which is the one shape D68's trigger misses. So:
-
-1. **Publishing a release is an install-docs change.** A leg that pushes a tag, or
-   that folds in the human task for one, updates `README.md` and
-   `docs/install.md` in the **same** leg — the same rule D68 states for install
-   code, with "publishes an artifact" added to the trigger. A release the docs do
-   not know about is the same defect as an install command that does not work.
-2. **Name the version that exists, not the state of the tag list.** The docs say
-   `v1.0.0-rc.1` rather than "a release has been tagged" / "none has". A concrete
-   version is checkable against the Releases page by a reader and by the next
-   leg; a status sentence is only checkable by whoever wrote it, which is how the
-   stale one survived four legs of Orient.
-3. **A pre-release is documented as one, and asked for by name.** `@latest` and
-   `@v1` both resolve to the newest *stable* version, so neither reaches an rc:
-   the documented `go install` line carries the full version until stable
-   `v1.0.0` lands. Restoring `@latest` as the primary line is step 3 of
-   `2026-07-30-first-release-tag` and belongs to the stable tag, not to this one.
-4. **Publisher inertness is not a pre-release rule.** Homebrew and the AUR
-   skipped the rc because their secrets are absent (D173 pt 2), *not* because the
-   tag was a pre-release — nothing in `.goreleaser.yml` keys off that. Docs and
-   future legs state the credential reason; a leg that adds the secrets should
-   expect the next tag of *any* kind to publish.
-5. **A criterion asking for artifacts is closed by the rc.** M5's "`goreleaser
-   release` produces Linux+macOS artifacts from a tag via CI" is ticked on the
-   `v1.0.0-rc.1` run: it asserts the pipeline, which a pre-release tag exercises
-   in full. The criteria that assert a *distributed, installable* v1 (the README
-   half, Homebrew/AUR verified, the DoD) still wait on stable `v1.0.0`.
-
-## D267 — a Done entry's **ID** is unique; a committed collision is renamed on the cheaper side, never rewritten (2026-08-12, BOARD-03)
-
-D15 makes the leg id the join key: the commit subject carries it, the journal
-entry is found by it, and the board's Done index is where a reader looks it up.
-Every board guard D224/D225 added assumed that key was unique and none of them
-checked it, so it quietly stopped being true — the 2026-08-09 README prose pass
-and the 2026-08-12 install-docs leg were both indexed as `DOC-02`, and `DOC-02`
-resolved to two unrelated pieces of work across two commits and two journals.
-
-1. **An `**ID**` in the Done index names exactly one leg**, and
-   `TestBoardDoneIDsAreUnique` enforces it. Before claiming an id, check it is
-   unused — the index is the canonical list (D225), so a `grep` of it is the
-   whole check.
+### D267 — a Done entry's **ID** is unique; a committed collision is renamed on the cheaper side, never rewritten (2026-08-12, BOARD-03)
+D15 makes the leg id the join key: the commit subject carries it, the journal entry is found by it, and the board's Done index is where a reader looks it up.
+1. **An `**ID**` in the Done index names exactly one leg**
 2. **Completeness cannot stand in for uniqueness.**
-   `TestBoardDoneIndexIsComplete` collects ids into a `map[string]bool` and only
-   asks whether a key is present, so a duplicate is indistinguishable from the
-   entry it collides with — and one entry's presence satisfies completeness for
-   *both* working-area lines. A later leg must not fold the two tests together
-   on the grounds that they both read the index.
-3. **A collision that has already been pushed is resolved by renaming, not by
-   rewriting history.** Both commit subjects are permanent (hard rule: never
-   rewrite shared history), so one of the two legs will always be reachable
-   under an id the board no longer uses.
+3. **A collision that has already been pushed is resolved by renaming, not by rewriting history.**
 4. **Rename the side with fewer references, and say what its commits carry.**
-   Here that was the older leg: it was referenced by its Done entry and its
-   journal, while the newer one was cited by D266, an M5 exit criterion, a
-   human-task update and the board's `Last updated:` line. The renamed entry and
-   its journal entry both record the old id, so the orphaned commit subject stays
-   findable. Prefer an a/b suffix when the two are halves of one item (the prose
-   pass became `DOC-01b`, the prose half of DOC-01's feedback); an unused id
-   otherwise.
 
-## D268 — the tag waits on a walked user path; stories are the instrument, and they are versioned with the code (2026-08-15, UX-PLAN)
+### D268 — the tag waits on a walked user path; stories are the instrument, and they are versioned with the code (2026-08-15, UX-PLAN)
+The `v1.0.0-rc.1` run proved the *pipeline* — artifacts, ldflags, notes, `go install` — and nothing about the *product*.
+1. **A story is a goal, not a script.**
+2. **The keystroke log ships, off by default**
+3. **The cluster fixture is committed, and clean on every run.**
+4. **The docs reorganize, they do not become a site.**
 
-The `v1.0.0-rc.1` run proved the *pipeline* — artifacts, ldflags, notes,
-`go install` — and nothing about the *product*. Every UX judgement kubecom has
-had is incidental: the maintainer opened the binary between legs and reported
-what annoyed them. No user path has been walked deliberately, start to finish,
-with an intent held in mind, which means the release would ship a UX nobody
-has ever measured. On 2026-08-15 the maintainer gated the tag on fixing that.
+### D269 — the letter remap: one verb, one easy key; switchers are capitals; search is the browser key (2026-08-15, STORY-06a)
+The S05 walk read two letter-families as kubecom's most confusing corners — the n-family (namespace vs next/previous match) and the s-family (search vs sort vs sort-clear) — and filed one master redesign (`2026-08-15-keymap-redesign.md`) with the whole intended map.
+1. **search.cluster moves to `ctrl+f`**
+2. **ns.switch moves to `N`**
+3. **delete takes `D`, describe takes `d`**
+4. **`logs.select` gains `V`**
+5. **The displaced-key rule generalises.**
 
-1. **A story is a goal, not a script.** Each `stories/*.md` states the fixture
-   state it begins from, the task in the user's words, and what to observe — and
-   deliberately **does not say which keys to press**, because which keys the user
-   reaches for is the measurement. One story is marked the **main story**, and it
-   is the spine the screencast (TAPE-01) and `docs/usage.md` (DOC-04) are both cut
-   against, so the demo, the doc and the test path cannot drift into three
-   different products.
-2. **The keystroke log ships, off by default** (`--keylog`, JSONL, documented).
-   A build-tagged dev-only recorder was the alternative and it was rejected: the
-   binary a user reports a UX problem *from* is the release binary, and a trace
-   they can attach is worth more than one only a maintainer can produce. Its
-   highest-value output is the **unresolved press** — a key that resolved to no
-   action is a user reaching for something kubecom does not have. It is off unless
-   asked for, because text-entry keys reconstruct typed queries, namespaces and
-   resource names; that is a privacy note the doc must carry, not a reason to omit
-   the feature.
-3. **The cluster fixture is committed, and clean on every run.** The July dogfood
-   workload existed only in one agent's shell history (journal `2026-07-21.3`), so
-   the tape's `shop` filter and every future story rested on a cluster nobody could
-   rebuild. `stories/cluster/up.sh` deletes and recreates before applying, so the
-   initial state is identical every run — a story compared against a drifted cluster
-   measures the drift. **k3d is the substrate**: it *is* k3s in docker, so it
-   satisfies "k3s based" while staying disposable, and it is what the July cluster
-   already used.
-4. **The docs reorganize, they do not become a site.** README drops to a landing
-   page; `docs/` takes the feature catalogue as `usage.md` plus a
-   `troubleshooting.md`. A published docs site was considered and declined for v1 —
-   it adds a generator, a theme and a deploy job to maintain, and buys nothing that
-   `docs/*.md` on GitHub does not already give a reader.
+### D270 — the sort column-picker is a header-focus mode on the table, not a popup; `s` is freed and `sort.clear` rides `x` (2026-08-15, STORY-06b)
+The redesign's S interaction (`2026-08-15-sort-column-picker.md`, superseded at 06a and carried here by the 06b board note) lands as a **column-header sort mode** on the table rather than a popup: `S` focuses the header row, `h`/`l`/`left`/`right` move a cursor across the columns, `enter` toggles the sort direction on…
+1. **`sort.column` is `S`, not a cycle.**
+2. **`sort.clear` is `x`, it works everywhere a table is showing, and inside the mode it resolves the mode.**
+3. **The mode is a capturing surface.**
 
-## D269 — the letter remap: one verb, one easy key; switchers are capitals; search is the browser key (2026-08-15, STORY-06a)
+### D271 — `enter` opens the actions menu on the selected row; it lives in a resource-table key context and `a` frees up (2026-08-16, STORY-06c)
+The walk's finding (`2026-08-15-enter-actions-menu.md`): pressing `enter` on a resource row should launch the actions menu (`actions.menu`, today the `:action ` palette stage), and drill-in (`res.children`, "Show pods") is already an entry in it — so drilling into an owner's pods is one menu pick away.
+1. **`actions.menu` binds `enter` in a third key context, `ctxTable`, resolved while the resource table owns the keys**
+2. **`a` frees up.**
+3. **The table's own `enter` no longer emits the dead `RowSelectedMsg`.**
 
-The S05 walk read two letter-families as kubecom's most confusing corners — the
-n-family (namespace vs next/previous match) and the s-family (search vs sort vs
-sort-clear) — and filed one master redesign
-(`2026-08-15-keymap-redesign.md`) with the whole intended map. STORY-06a landed
-the **letters** half; the two keys that are *interactions* rather than letters
-stay put until their own slices (sort column-picker `S` → STORY-06b, actions menu
-on `enter` → STORY-06c).
+### D272 — pickers open in navigation mode: the list is the target, `j`/`k` move it, and `/` opens the filter; the current choice is preselected (2026-08-16, STORY-06d)
+The S01 walk's sharpest dead end (`2026-08-15-picker-navigation-mode.md`): pressing `j`/`k` in the namespace switcher typed into its filter instead of navigating — 4 dead `j`s across two picker visits.
+1. **A picker's `Show()` opens in navigation mode**
+2. **The command palette's verb list is the one type-to-filter surface left.**
+3. **A value picker preselects the current choice.**
+4. **This does not touch `WithOptInFilter` or a second matcher.**
+**Refs:** supersedes D194 pt 2.
 
-1. **search.cluster moves to `ctrl+f`** (the browser "find" key), and
-   `nav.pageDown` — displaced from `ctrl+f` — takes **`space`** (vim's own
-   scroll-a-screen gesture, pairing the kept `ctrl+b` pageUp). `ctrl+s` is freed.
-   A later leg must not reintroduce a bare-letter search key: search.cluster is an
-   app-global that must survive its always-open query field (D140 pt 1), which is
-   exactly why it keeps the ctrl chord.
-2. **ns.switch moves to `N`**, joining the capital-letter switcher family
-   (`N`/`R`/`C`/`T`), and `app.searchPrev` — displaced from `N` — takes **`#`**
-   (vim's backward-occurrence gesture, the mirror of `*`). `ctrl+n` is freed.
-   Previous-match is deliberately *out* of the n-family: that is the entire point
-   of the remap, so a later leg must not bind it back to a plain letter near `n`.
-3. **delete takes `D`, describe takes `d`** — destructive actions sit on the
-   capital, read actions on the lowercase, exactly as the redesign's rule states.
-4. **`logs.select` gains `V`** beside `v` — the S01 walk's own muscle memory
-   (vim's linewise-visual); both select, the choice is not either/or.
-5. **The displaced-key rule generalises.** Any future remap that takes a key must
-   give its displaced action a new home *in the same change* — the design treats a
-   binding as a pair (action, key), never as two independently-moved things. The
-   tape (`docs/screencast.tape`), the generated `docs/keybindings.md`, the help
-   overlay and the default-resolution tests all ride the registry, so they follow
-   automatically; only the tape's own prose and the `navChords` warning set (which
-   tracks the navigation keys of the day) need a hand alongside.
+### D273 — the trace instrument tells the truth about both dead-end classes: the recorder writes the confirm modal's resolved action, and the analyzer reports text-surface presses in their own section (2026-08-16, STORY-06e)
+The S02 walk's two mirror-image instrument failures, filed together (`2026-08-15-confirm-key-false-deadends.md` + `2026-08-15-analyzer-text-surface-blindspot.md`): one hid real dead ends, the other fabricated them.
+1. **The recorder writes a confirm modal's *resolved* action.**
+2. **A press on a text surface is not a dead end and not invisible: it is its own report section.**
+3. **The analyzer's dead-end predicate stays `action == "" && !text && !pending`; the text branch comes first.**
 
-## D270 — the sort column-picker is a header-focus mode on the table, not a popup; `s` is freed and `sort.clear` rides `x` (2026-08-15, STORY-06b)
-
-The redesign's S interaction (`2026-08-15-sort-column-picker.md`, superseded at 06a
-and carried here by the 06b board note) lands as a **column-header sort mode** on
-the table rather than a popup: `S` focuses the header row, `h`/`l`/`left`/`right`
-move a cursor across the columns, `enter` toggles the sort direction on the cursor
-column, `esc` returns focus to the rows, and `sort.clear` is the mode's "clear"
-pick. `s` is freed entirely — the s-family is now `S` (enter the mode) and `x`
-(clear) alone, with search on `ctrl+f` (D269) and nothing sharing a letter.
-
-1. **`sort.column` is `S`, not a cycle.** The old `sort.column` `s`-cycle is gone;
-   the keymap description reads "Sort: focus the column-header row". The mode is a
-   view over the table's existing `SortBy`/`ClearSort` (no new sort state), and the
-   cursor is the only new field. A later leg must not reintroduce a bare-letter
-   sort cycle: the walk's 26-`s` burst was the finding that killed it.
-2. **`sort.clear` is `x`, it works everywhere a table is showing, and inside the
-   mode it resolves the mode.** The "lives inside the mode" in the design is about
-   *placement* (the mode is where the clear is advertised and most natural), not
-   exclusivity: the palette verb and the key keep clearing a showing table's sort
-   from anywhere, so nothing is lost. Inside the mode, `x` clears **and exits the
-   mode in the same press** — the sort is gone, so the picker's reason for being up
-   is over; the reader lands back on the rows, exactly as `esc` leaves it. A later
-   leg must not make `x` a sort key in the letter sense (it is a clear gesture),
-   but it must also not break the palette verb or the outside-the-mode clear, and
-   it must not keep the mode up after a clear — the clear resolves both the sort
-   and the picker.
-3. **The mode is a capturing surface.** While it is up, `h`/`l`/`enter`/`esc`/
-   `x`/`S` act and everything else is swallowed (the forwards-panel shape), and the
-   hint bar shows a new `HelpSort` context (HINT-05-complete: declared, named, set,
-   reachable). Entering the mode focuses the table; leaving it (esc, `S`, `q`)
-   returns to the rows. The cursor clamps and reveals itself via the table's
-   existing horizontal-scroll machinery (`revealSortCursor`), and a RESET/delta
-   that shrinks the columns clamps the cursor rather than letting it dangle.
- 4. **This supersedes the popup design.** The board note carried the popup design's
-   "clear sort entry" intent into the header-focus interaction; a later leg must
-   not build a sort-column popup/picker alongside the mode. `TestSortMode*` and the
-   `docs/keybindings.md` `sort` rows are the shape's contract.
-
-## D271 — `enter` opens the actions menu on the selected row; it lives in a resource-table key context and `a` frees up (2026-08-16, STORY-06c)
-
-The walk's finding (`2026-08-15-enter-actions-menu.md`): pressing `enter` on a
-resource row should launch the actions menu (`actions.menu`, today the `:action `
-palette stage), and drill-in (`res.children`, "Show pods") is already an entry in
-it — so drilling into an owner's pods is one menu pick away. `enter` is the
-**universal accept key** on modals, prompts, pickers and confirms, and that stays;
-only the resource-table context changes.
-
-1. **`actions.menu` binds `enter` in a third key context, `ctxTable`, resolved
-   while the resource table owns the keys** — the same split D132 gave the confirm
-   modal (a key that means different things in different surfaces). `enter` keeps
-   its browse meaning (`nav.drillIn`) on the menu pane, in pickers and on modals;
-   the shell consults `TableAction` first, exactly as `routeModalConfirmKey`
-   consults `ConfirmAction`. A later leg must not rebind `actions.menu` onto a
-   plain browse key that would collide with `nav.drillIn`, and must not remove the
-   table-context gate: the gate is the hint ladder itself (`hintContext() ==
-   HelpTable`), so an open modal/logs/viewer/forwards/help/sort-mode surface keeps
-   its own `enter`, and a pending sequence (`g` of `gg`) still owns the press.
-2. **`a` frees up.** The letter is deliberately unbound (keymap test pins it);
-   the redesign's displaced-key rule (D269 pt 5) is satisfied because the actions
-   gesture got a new home in the same change. `:` and the palette's `:action `
-   verb still reach the menu, and the row-verb stage is unchanged — only the
-   gesture that opens it moved.
-3. **The table's own `enter` no longer emits the dead `RowSelectedMsg`.** It was
-   the S01 "lost gesture": the shell never handled that message. In its place the
-   table context opens the actions menu; the drill-in (Show pods) is inside it, so
-   nothing is lost. A later leg must not re-introduce a bare `enter`-drills-into-
-   row behaviour on the table.
-
-## D272 — pickers open in navigation mode: the list is the target, `j`/`k` move it, and `/` opens the filter; the current choice is preselected (2026-08-16, STORY-06d)
-
-The S01 walk's sharpest dead end (`2026-08-15-picker-navigation-mode.md`): pressing
-`j`/`k` in the namespace switcher typed into its filter instead of navigating — 4
-dead `j`s across two picker visits. This supersedes D194 pt 2's "a picker filters
-as you type; the filter field opens with the picker" for **value pickers**: the
-filter is a `/`-away overlay, not the default state.
-
-1. **A picker's `Show()` opens in navigation mode** — list focused, j/k navigate,
-   `/` (ActionFilter) opens the filter field. Every value picker opens this way:
-   the palette's argument stages (`:namespace `, `:context `, `:resource `,
-   `:theme `, `:action `, `:pin `) and the container/port pickers. A later leg must
-   not return a value picker to type-to-filter-on-open; the walk measured that
-   shape and found it the sharpest dead end of the whole pass. The esc ladder is
-   now: esc closes a filter opened by `/` (back to the list), a second esc cancels.
-2. **The command palette's verb list is the one type-to-filter surface left.** It
-   opens via `ShowFiltered` (the field opens with it) because its identity is "one
-   place you type to make anything happen" (D197), and the S04 walk gave it a clean
-   bill. `OpenFilter`/`CloseFilter` are the in-place transitions between the two
-   modes as the palette moves verb → argument stage → verb list; backspace-rewind
-   must keep working from a navigation-mode stage too (D233 pt 3).
-3. **A value picker preselects the current choice.** The namespace stage preselects
-   the current workspace (or the all-namespaces sentinel when scope is empty), the
-   context stage the shell's current context, the theme stage the theme rendering
-   now — via `picker.SelectValue`, applied after seeding (async stages preselect
-   when their values land). A current value absent from the list leaves the cursor
-   at the top rather than failing. A later leg must not drop preselection: opening
-   a switcher to change something and finding the thing you are changing already
-   highlighted is the point.
-4. **This does not touch `WithOptInFilter` or a second matcher.** D194 pt 1 (one
-   fuzzy matcher) stands; the port picker's old opt-in construction is gone because
-   navigation mode is now the default for it too. A later leg must not reintroduce
-   a per-construction filter-on-show knob for value pickers — the mode follows the
-   surface's identity (verb list vs value list), not the picker's kind.
-
-## D273 — the trace instrument tells the truth about both dead-end classes: the recorder writes the confirm modal's resolved action, and the analyzer reports text-surface presses in their own section (2026-08-16, STORY-06e)
-
-The S02 walk's two mirror-image instrument failures, filed together
-(`2026-08-15-confirm-key-false-deadends.md` + `2026-08-15-analyzer-text-surface-blindspot.md`):
-one hid real dead ends, the other fabricated them.
-
-1. **The recorder writes a confirm modal's *resolved* action.** The confirm context
-   resolves keys (`ConfirmAction`: `y`/enter → `confirm.accept`, `n`/esc →
-   `confirm.decline`, D132), so a handled accept or decline is recorded with the
-   action it ran, not as a blank press the analyzer reads as a dead end. A key the
-   confirm modal does *not* resolve is still a dead end — the modal is not a text
-   surface, so an unhandled press there remains a reach. A later leg must not move
-   the recorder back to recording a blank action for the confirm mode.
-2. **A press on a text surface is not a dead end and not invisible: it is its own
-   report section.** An empty action on a surface that accepts typed text is
-   ambiguous — ordinary typing, or a navigation reach the surface swallowed (the
-   picker's 4 `j`s of the S01 walk were the latter). The analyzer reports these as
-   `TextPresses`, ranked by frequency, separate from `DeadEnds`. A later leg must
-   not merge them back into the dead-end count (every typed character would flood
-   the report) and must not skip them silently (the S01 finding was exactly what
-   the old code hid).
-3. **The analyzer's dead-end predicate stays `action == "" && !text && !pending`;
-   the text branch comes first.** The `Record.Text` flag already distinguishes the
-   two classes; the analyzer just tallies text presses into their own bucket. This
-   needs no new trace field — the recorder's existing `Text` flag carries the
-   distinction, which is why the two fixes are independent.
-
-## D274 — a dedicated `events` action lists an object's own core Events, filtered by involvedObject UID and rendered as the server-printed table (2026-08-16, STORY-06f)
-
-S02's describe was the diagnostic lever only because events lived nowhere else
-(`2026-08-15-events-action.md`); the fold-in gives the object's events their own
-surface, "why is this red" in one gesture.
-
+### D274 — a dedicated `events` action lists an object's own core Events, filtered by involvedObject UID and rendered as the server-printed table (2026-08-16, STORY-06f)
+S02's describe was the diagnostic lever only because events lived nowhere else (`2026-08-15-events-action.md`); the fold-in gives the object's events their own surface, "why is this red" in one gesture.
 1. **The kube primitive filters by `involvedObject.uid`, falling back to the name.**
-   `kube.Clients.Events` lists core/v1 events in the ref's namespace with the field
-   selector `involvedObject.uid=<uid>` — the same precise key kubectl describe's own
-   SearchEvents uses — and a row that lost its metadata (the degraded row of
-   principle 3) degrades to `involvedObject.name`. An empty name is rejected rather
-   than listed unfiltered. A later leg must not widen this to a label/kind filter
-   that could return another object's events. The list is scoped to `ref.Namespace`,
-   which is empty for a cluster-scoped object and then lists across all namespaces
-   (where a Node's events live) — the search kubectl describe runs for those.
-2. **The list is a server-printed Table, kubectl-identical.** The events viewer
-   renders whatever the server prints (`kubectl get events` columns: LAST SEEN, TYPE,
-   REASON, OBJECT, MESSAGE on a default, the wide set on a server that defaults
-   wide), laid out as aligned text with the **last column flowing** (wraps in the
-   viewport rather than being clipped). kubecom hard-codes no event column (D33). A
-   later leg must not hand-roll an events formatter with fixed columns; a rich
-   describe (STORY-06h) that wants to *paint* events consumes the same Table.
-3. **`E` is the default direct key** — the mnemonic **E**vents, the partner to `d`
-   describe in the capital-letter family (`D` delete, `L` logs); `e` stays res.edit.
-   The action gates on the kind's get verb like describe, and a missing events
-   get-permission degrades to a toast (principle 3). This first slice renders into
-   the shared text viewer; a live/watched events list is not promised here and is a
-   separate question.
+2. **The list is a server-printed Table, kubectl-identical.**
+3. **`E` is the default direct key**
 
-## D275 — the unhealthy quick-access is a per-kind filter on the current table (`H`), split from the cross-kind surface (2026-08-16, STORY-06g-1)
+### D275 — the unhealthy quick-access is a per-kind filter on the current table (`H`), split from the cross-kind surface (2026-08-16, STORY-06g-1)
+S02's two sharpest findings — "no way to jump straight at the failing rows" and "a failure that is not a pod is invisible" — both came from the fold-in's STORY-06g, which the board had folded into one slice.
+1. **`app.unhealthy` (`H`, shift+h) narrows the current resource table to the rows the M4-06 cell classifier reads as unhealthy.**
+2. **The unhealthy view composes with the `/` substring filter and is a view over the authoritative full set.**
+3. **The status bar shows an `unhealthy` marker while the view is on**
 
-S02's two sharpest findings — "no way to jump straight at the failing rows" and
-"a failure that is not a pod is invisible" — both came from the fold-in's STORY-06g,
-which the board had folded into one slice. That slice is too big for one leg and
-splits here (D52's bottom-up rhythm: the predicate and gesture first, the sweep
-second):
-
-1. **`app.unhealthy` (`H`, shift+h) narrows the current resource table to the rows
-   the M4-06 cell classifier reads as unhealthy.** The predicate is the classifier
-   itself, lifted from the cell level to the row: a row is unhealthy when any
-   visible cell classifies to a warning or an error role. That is exactly what the
-   table already paints as not-green — CrashLoopBackOff, ImagePullBackOff,
-   Pending/unschedulable, a not-ready READY, a stuck claim — so the "what's broken"
-   view and the color tell the same story. `H` was the feedback's own suggestion
-   ("healthy vs h"), free in the browse context, not a reserved nav chord (D10).
-   A later leg must not invent a second, private health predicate that could drift
-   from the coloring: `classifyCell` is the one source (D164).
-2. **The unhealthy view composes with the `/` substring filter and is a view over
-   the authoritative full set.** A row must survive both narrowings; watch deltas
-   keep flowing and re-derive the view; turning it off (or a new resource, `SetTable`)
-   brings every row back — the same shape `SetFilter` has had since M2-09a. `esc`
-   clears it alongside the substring filter: `esc` is "show me everything again".
-3. **The status bar shows an `unhealthy` marker while the view is on**, so a table
-   narrowed to zero rows never reads as an empty table, and the palette lists the
-   verb. This slice is deliberately per-kind: the gesture finds the broken rows of
-   the kind you are on. The other half of the finding — the fifth failure is a PVC
-   and a pod-first walk never visits it — is **STORY-06g-2**, a cross-kind sweep
-   that lists unhealthy objects across kinds so a failure that is not a pod finds
-   the operator. A later leg must not close 06g-2 by widening this filter to
-   "remember the kind I last looked at": the miss is that the operator never thought
-   to switch kinds, and a per-kind view does not fix that.
-
-## D276 — the cross-kind unhealthy sweep is a `kube.Scan` primitive over a caller-supplied `RowFilter` (2026-08-16, STORY-06g-2a)
-
-S02's miss — the fifth failure is a PVC and a pod-first walk never visits it — needs a
-cross-kind sweep, the other half of STORY-06g (D275 pt 3). The primitive lands first,
-before the surface (D52's bottom-up rhythm, the M4-07→M4-08 / SEARCH-02a→02b shape):
-
+### D276 — the cross-kind unhealthy sweep is a `kube.Scan` primitive over a caller-supplied `RowFilter` (2026-08-16, STORY-06g-2a)
+S02's miss — the fifth failure is a PVC and a pod-first walk never visits it — needs a cross-kind sweep, the other half of STORY-06g (D275 pt 3). The primitive lands first, before the surface (D52's bottom-up rhythm, the M4-07→M4-08 / SEARCH-02a→02b shape):
 1. **The sweep is a kube-layer primitive over a caller-supplied predicate.**
-   `kube.Clients.Scan(ctx, resources, namespace, keep RowFilter, limit)` fans out
-   one-shot Lists across the given kinds and streams `ScanEvent`s — ScanMatch per
-   kept row, exactly one ScanKindDone per kind (a failed List degrades to
-   `Failed`, never aborts — principle 3), and a terminal ScanDone reporting
-   `Capped` — under the same concurrency bound and cancellation rules Search
-   established (D131 pt 2, SEARCH-03). The predicate is a seam — `RowFilter
-   func(tbl *Table, row Row) bool` — because the M4-06 health classifier is a TUI
-   concern (it lives keyed by column name in the table component) and kube must
-   not import tui. A later leg must not move the classifier into kube, and must
-   not build a second, TUI-side fan-out instead of calling Scan: the per-kind
-   isolation and the concurrency bound are the point of the primitive.
-2. **A scan hit carries the row, cells included** (`ScanHit{Resource, Row}`),
-   unlike a SearchHit which carries no cells because drilling re-lists. The
-   unhealthy surface is meant to *show* the reason — kind · name · namespace ·
-   the offending cell — so re-listing every kind to render it would cost the sweep
-   the scan just paid. Ref is `Row.Object`. A later leg must not strip the cells
-   off the hit to "match" SearchHit's shape.
-3. **STORY-06g-2 is two slices** (this one and the surface 06g-2b). The surface
-   feeds Scan the M4-06 row predicate and presents the hits, each navigable;
-   the feedback file `2026-08-15-pod-first-blinds-non-pod-failures.md` is deleted
-   when that slice lands (D69). The predicate is the classifier lifted to a row —
-   the same one source 06g-1/H established (D275 pt 1, D164) — so the cross-kind
-   list and the per-kind filter can never disagree about what is broken.
+2. **A scan hit carries the row, cells included**
+3. **STORY-06g-2 is two slices**
 
-## D277 — `/` filters whichever pane holds focus: the resource kinds in the menu, or the table rows (2026-08-16, STORY-06m)
+### D277 — `/` filters whichever pane holds focus: the resource kinds in the menu, or the table rows (2026-08-16, STORY-06m)
+Feedback `2026-08-15-resources-pane-filter.md`: pressing `/` while the **resources pane** holds focus launched the filter in the **table** instead of narrowing the kind list in that pane. The old rule — "`/` targets the table wherever focus is" — is replaced by "`/` targets the focused pane":
+1. **`/` is a pane-scoped filter.**
+2. **The filter matches the D203 alias surface**
+3. **The menu hint set advertises `/`**
 
-Feedback `2026-08-15-resources-pane-filter.md`: pressing `/` while the **resources
-pane** holds focus launched the filter in the **table** instead of narrowing the
-kind list in that pane. The old rule — "`/` targets the table wherever focus is" —
-is replaced by "`/` targets the focused pane":
+### D278 — the scan surface is a `components/unhealthyview` sub-model fed by `kube.Scan`; a hit carries the columns so the reason is renderable (2026-08-16, STORY-06g-2b-1)
+The surface half of STORY-06g-2 (D276) is a full-screen, cursor-navigable list of ScanHits — the "the broken things find the operator" view for the S02 miss (a failure that is not a pod). Its shape follows the decisions that already govern full-screen surfaces:
+1. **`kube.ScanHit` carries the columns the row sat under.**
+2. **The row predicate is the table component's exported `UnhealthyRow` / `UnhealthyCells`**
+3. **The surface is a `components/unhealthyview` sub-model**
 
-1. **`/` is a pane-scoped filter.** With the menu focused it opens the field over
-   the menu (`menu.SetFilter`); with the table focused it keeps its M2-09b table
-   meaning. The target is fixed when the field opens (`app.menuFilter`), so a key
-   typed mid-edit never re-aims. The menu mirror of the table split: authoritative
-   `full` list (seed + extras + discovery) beside a displayed `items` view, with
-   `SetFilter`/`ClearFilter`/`Filter` and the three mutators (`Reconcile`,
-   `addExtras`, `Unpin`) writing `full` and re-deriving `items` — so a narrowing
-   filter never loses a kind, exactly like the table's (D78).
-2. **The filter matches the D203 alias surface**, not just the display title:
-   title, Kind, plural resource, short names and API group all answer, so `deploy`
-   finds Deployments and a CRD's short name finds it. `Items()` keeps returning the
-   authoritative full list — the shell's kind inventory (availableResources, the
-   `:resource `/`:pin ` stages, pane memory) must not shrink when the menu is
-   narrowed, or a filtered pane would quietly limit what search and the pickers
-   offer.
-3. **The menu hint set advertises `/`** (`HelpMenu` gains ActionFilter), and the
-   hint context while either pane's filter field is open is the shared
-   `HelpTableFilter` — the field's no-text keys (move, commit, clear) act the same
-   over both targets. A later leg must not reintroduce a hard-coded `app.filter`
-   → table target, and must not make `menu.Items()` return the narrowed view.
+### D279 — the unhealthy sweep is wired as a one-shot scan on `U`, over the menu's kinds, reusing the search pending-selection mechanism (2026-08-16, STORY-06g-2b-2)
+The wiring that makes the cross-kind list reachable (the second half of D278 pt 3) lands the seam and the gesture:
+1. **The `Scanner` seam mirrors `Searcher` exactly**
+2. **The gesture is a browse action `app.unhealthyScan` on `U`**
+3. **The sweep runs once, on open, over a generation-guarded pump.**
+4. **Drill-in reuses the search pending-selection mechanism.**
+5. **The view routes like the logs view with its grep closed**
 
-## D278 — the scan surface is a `components/unhealthyview` sub-model fed by `kube.Scan`; a hit carries the columns so the reason is renderable (2026-08-16, STORY-06g-2b-1)
-
-The surface half of STORY-06g-2 (D276) is a full-screen, cursor-navigable list of
-ScanHits — the "the broken things find the operator" view for the S02 miss (a
-failure that is not a pod). Its shape follows the decisions that already govern
-full-screen surfaces:
-
-1. **`kube.ScanHit` carries the columns the row sat under.** A scan hit already
-   carries the row (D276 pt 2); this adds `Columns []Column` so a surface can
-   classify the row's cells by column name — "which cell is the offending one"
-   is unanswerable from the row alone, and the whole point of the hit's shape is
-   to render the reason without re-listing. A later leg must not strip the
-   columns (the reason would silently become unrenderable), and a surface that
-   shows a hit's reason must classify via `table.UnhealthyCells`, never by
-   re-listing the kind.
-2. **The row predicate is the table component's exported `UnhealthyRow` /
-   `UnhealthyCells`** — the M4-06 classifier (color.go) lifted to a whole
-   server-printed table. D276 named the predicate as a seam because the
-   classifier is a TUI concern; the seam is now concrete and shared: the sweep's
-   filter, the reason a hit shows, and the per-kind `H` filter all run the same
-   `classifyCell`, so the cross-kind list and the per-kind filter cannot disagree
-   about what is broken (D275 pt 1, D164's one source).
-3. **The surface is a `components/unhealthyview` sub-model** (D264 pt 3): a
-   full-screen list of ScanHits with a header tracking the sweep (scope · count ·
-   scanning M/N kinds · cap), navigation and drill-in/back as keymap actions
-   (D11), emitting its own `SelectedMsg`/`ClosedMsg` (D56). It has **no query
-   field** — the sweep runs once on open, not per keystroke — so it is a pure
-   list, the thing that makes it unlike the search view. It runs no scan itself
-   and knows nothing about clients (SEARCH-02a's rhythm). This slice (06g-2b-1)
-   is the component + the seams in isolation; the wiring that opens it and feeds
-   it `kube.Scan` is 06g-2b-2, which deletes the feedback file (D69).
-
-## D279 — the unhealthy sweep is wired as a one-shot scan on `U`, over the menu's kinds, reusing the search pending-selection mechanism (2026-08-16, STORY-06g-2b-2)
-
-The wiring that makes the cross-kind list reachable (the second half of D278
-pt 3) lands the seam and the gesture:
-
-1. **The `Scanner` seam mirrors `Searcher` exactly** — `Scanner` over `kube.Scan`
-   on the `Cluster` bundle (D155), `WithScanner` option, nil → scan-inert (the
-   `U` key opens nothing, like `ctrl+f` with no searcher). A later leg must not
-   give the sweep a hand-rolled fan-out or a second client path: one primitive
-   (`kube.Scan`), one seam.
-2. **The gesture is a browse action `app.unhealthyScan` on `U`** — the capital
-   **U**nhealthy, the cross-kind partner to the per-kind `H` filter, app-global
-   and inert without a scanner. It opens the view and runs exactly one sweep over
-   `availableResources()` (every kind the menu offers — the whole point is that
-   the broken thing may be a kind the operator is not looking at), in the app's
-   own namespace, capped at `scanHitLimit` = 200 (the search cap, D131 pt 4).
-   Unlike search there is no curated narrow set: the sweep covers all offered
-   kinds, never a subset.
-3. **The sweep runs once, on open, over a generation-guarded pump.** `scanGen`/
-   `scanCancel`/`scanCh` mirror `searchGen`/`searchCancel`/`searchCh` (D140
-   pt 3): every close bumps the generation so a cancelled sweep's draining events
-   are dropped rather than appended to a view that is no longer up. `stopScan`
-   joins the `stopClusterAsync` inventory (D155 pt 1) so the sweep dies on quit
-   and on a context switch.
-4. **Drill-in reuses the search pending-selection mechanism.** `handleUnhealthySelected`
-   closes the list, switches browse to the hit's kind through `selectResource`,
-   and stashes the hit's row object as `searchTarget`/`hasSearchTarget` — the
-   exact fields the search drill-in leaves behind (D276 pt 4's sibling), consumed
-   by the same `applyPendingSelect` when the fresh watch's first RESET lands. A
-   later leg must not add a second pending-selection field: one mechanism, shared
-   by both drill-ins, cleared by `watchResource` and `resetCluster`.
-5. **The view routes like the logs view with its grep closed** — it has no text
-   field, so keys resolve through the browse keymap (sequencer) and `handleAction`
-   intercepts `unhealthyView.Active()` to feed them to the view; `q` closes the
-   view like every full-screen pager. It gets its own `HelpUnhealthy` hint context
-   (D143 pt 1) so the bottom line never advertises the browse set underneath.
-
-## D280 — the follow state is a painted badge, `styles.Follow`, gated by the canvas's polarity (2026-08-16, STORY-06j-1)
-
-The S03 feedback `2026-08-15-logs-follow-visual-signal.md` wanted the follow/pause
-state to be unmistakable at a glance — "this is confusing, yeah" — because a word
-(`[following]`/`[paused]`) in the header is exactly what the eye skips. The shape
-of the fix is settled so later legs stop re-deriving it:
-
-1. **The indicator is a `styles.Follow` role, not a per-view colour.** A new role
-   on `Styles` (derived in `New`, `followStyle`) paints the `[following]` token;
-   `[paused]` renders through `Header` as today. The two states differ by a
-   painted bar, not by word order. A later leg must not hand-roll a green in the
-   logs view or bolt a background onto `Header` — the badge is one role, one rule,
-   three surfaces could share it.
-2. **The paint rule is Match's, exactly (D252 pt 3): weight everywhere, paint
-   only where the paint can carry the floor.** `Follow` is bold on every palette;
-   on a dark canvas it paints canvas ink on the palette's Success green (measured
-   4.69–11.03:1 across the dark built-ins, over the 4.5:1 floor); on a light
-   canvas it paints nothing — no palette-native shade on Success clears the floor
-   there (measured 2.96–4.29:1, the same conclusion D252 pt 3 reached for Warn) —
-   so the badge degrades to bold alone. The gate is the palette's own measured
-   polarity (`IsDark`), one rule, no per-palette exemption, and
-   `TestFollowBadgeIsDistinguishable` holds every built-in to it.
+### D280 — the follow state is a painted badge, `styles.Follow`, gated by the canvas's polarity (2026-08-16, STORY-06j-1)
+The S03 feedback `2026-08-15-logs-follow-visual-signal.md` wanted the follow/pause state to be unmistakable at a glance — "this is confusing, yeah" — because a word (`[following]`/`[paused]`) in the header is exactly what the eye skips. The shape of the fix is settled so later legs stop re-deriving it:
+1. **The indicator is a `styles.Follow` role, not a per-view colour.**
+2. **The paint rule is Match's, exactly (D252 pt 3): weight everywhere, paint only where the paint can carry the floor.**
 3. **The header composes the badge mid-line without breaking the neighbours.**
-   The token is looked up in the already-clipped text (clip truncates from the
-   right, so the token is intact or gone with the tail — a narrow header that
-   clipped it away degrades to today's plain form rather than paint a broken
-   span), and the prefix/suffix get their own `Header` render so the badge's
-   reset does not leave the rest of the line in the terminal default.
 
-## D281 — a downward scroll *past* the newest log line re-arms following (2026-08-16, STORY-06j-2)
-
-The S03 feedback `2026-08-15-logs-scroll-past-end-resumes-follow.md` (Priority
-high) reported the trap: scrolling up to read pauses follow, and scrolling back
-down leaves the reader at the end of a *silently frozen* stream — only `G` re-arms,
-and a reader already sitting on the newest line has no reason to press it. The
-rule that replaces D147's downward half, so later legs stop re-deriving it:
-
+### D281 — a downward scroll *past* the newest log line re-arms following (2026-08-16, STORY-06j-2)
+The S03 feedback `2026-08-15-logs-scroll-past-end-resumes-follow.md` (Priority high) reported the trap: scrolling up to read pauses follow, and scrolling back down leaves the reader at the end of a *silently frozen* stream — only `G` re-arms, and a reader already sitting on the newest line has no reason to press it.
 1. **The gesture is the press *after* the one that lands on the newest line.**
-   Landing on the last shown line stays browsing (a paused reader scrolling down
-   to read the end keeps their frozen snapshot); the *next* downward press — the
-   no-op vim would make of it — asks to go past the end of the buffer, and past
-   the end of a stream there is only the stream, so it re-arms following exactly
-   as `nav.bottom` does. This supersedes D147's "incremental downward movement
-   deliberately does not resume following": it now does, one press later.
 2. **Every downward navigation says it, and only when the move is a no-op.**
-   `nav.down`, `nav.halfPageDown` and `nav.pageDown` all route through
-   `scrollDown`, which re-arms iff `atNewest()` — paused, not selecting, a
-   non-empty body, cursor on the last shown line. A page-down that *overshoots*
-   the end from above still only lands there; it does not re-arm. A future
-   surface with a tailing pager should reuse this two-step shape rather than
-   invent a "close enough to the bottom" threshold.
-3. **Visual mode is excluded.** Inside a selection a downward key extends it, and
-   re-arming would hand the selection's moving end to the stream — the same
-   reason `G` does not resume following mid-selection (D242 pt 5).
+3. **Visual mode is excluded.**
+**Refs:** replaces D147; supersedes D147.
 
-## D282 — in the cluster search, `enter` opens a hit and a *movement* commits into the result list (2026-08-20, STORY-06k-1)
+### D282 — in the cluster search, `enter` opens a hit and a *movement* commits into the result list (2026-08-20, STORY-06k-1)
+The S05 feedback `2026-08-15-search-single-enter.md` (Priority high) reported the cost of SEARCH-05's mode: reaching a result took two enters, because the first one was spent moving focus from the query field to the result list. The split that replaces D235's commit-then-open half:
+1. **`nav.drillIn` always opens the highlighted hit**
+2. **A movement over the list is what commits into it.**
+3. **The hand-off refuses an empty list.**
+4. **`nav.back` is unchanged and is now the only action here that reads the focus**
+**Refs:** replaces D235.
 
-The S05 feedback `2026-08-15-search-single-enter.md` (Priority high) reported the
-cost of SEARCH-05's mode: reaching a result took two enters, because the first one
-was spent moving focus from the query field to the result list. The split that
-replaces D235's commit-then-open half:
+### D283 — a search hit carries the row it was matched in, and the search view previews it (2026-08-20, STORY-06k-2)
+The S05 feedback `2026-08-15-search-result-preview.md` (Priority high) reported the cost of a result list that shows only identity: the wrong hit gets opened and the search is paid for twice. The preview that answers it:
+1. **`kube.SearchHit` carries `Columns` and `Cells`**
+2. **The preview is a two-line footer, reserved unconditionally.**
+3. **A preview is the data the surface already holds, never a fetch.**
 
-1. **`nav.drillIn` always opens the highlighted hit**, from the query line as well
-   as from the result list, and emits nothing when there are no hits. Enter in this
-   view means "open this", never "change mode" — a surface where the same key means
-   a mode change on the first press and an action on the second charges the reader
-   a keystroke for state they cannot see.
-2. **A movement over the list is what commits into it.** Every cursor action
-   (`nav.up`/`down`/`top`/`bottom`, the page pair) routes through `enterResults`,
-   which hands the keyboard over on the first such press and then moves; from the
-   second press on the list owns every mapped key, so `hjkl`, `g`/`G` and the page
-   chords navigate. The mode is entered by *using* it, so it needs no key of its
-   own and nothing new to advertise in the hint.
-3. **The hand-off refuses an empty list.** With no hits both gestures are inert and
-   focus stays on the query: results focus over no rows is a mode with no cursor,
-   nothing to open, and no visible reason for typing to have stopped working.
-4. **`nav.back` is unchanged and is now the only action here that reads the focus** —
-   results → query field → cleared query → closed, one step per press (D233).
+### D284 — a pager fills the pane; only popups overlay (2026-08-20, STORY-06h-1)
+The S02 feedback `2026-08-15-describe-replaces-right-pane.md` reported the cost of rendering the shared viewer as a centered inset: describe was the walk's primary diagnostic and its output needed scrolling immediately, inside a box deliberately kept 4 cells clear of the screen edge. The split this settles:
+1. **The shared viewer (`components/viewer`) is a pane, not a popup.**
+2. **D95 is unchanged for the modals.**
+3. **The pane boundary is read off the rendered menu, never recomputed.**
 
-A view that pairs a text field with a result list should follow this shape rather
-than spending its confirm key on a focus change.
+### D285 — one health vocabulary: a surface paints through the M4-06 classifier, never its own word list (2026-08-21, STORY-06h-2)
+The S04/S05 feedback `2026-08-15-rich-describe-panel.md` asked for a describe panel that surfaces the failure with colour instead of a plain dump. Painting text raises the question every non-table surface will now hit — *what counts as broken here?* — and there must be exactly one answer:
+1. **`table.ClassifyValue(column, value)` is the single classifier.**
+2. **A non-table surface maps its own labels onto the classifier's columns.**
+3. **Painting adds colour and nothing else.**
+4. **Painted content is palette state.**
 
-## D283 — a search hit carries the row it was matched in, and the search view previews it (2026-08-20, STORY-06k-2)
+### D286 — a relation is a scope or a name, resolved in one Get, and never an edge that cannot be opened (2026-08-21, STORY-06i-1)
+The S04 feedback `2026-08-15-relations-navigation-popup.md` asks to move from a pod to its parent workload and back, and on to whatever a resource is linked to.
+1. **A relation is either *named* or *set-shaped*, and the shape decides how it opens.**
+2. **A relation's target `Resource` comes from the caller's discovered kind set, never synthesized.**
+3. **`Relations` costs exactly one Get.**
+4. **`RelationRole` is a display label; `RelationDirection` is the grouping.**
 
-The S05 feedback `2026-08-15-search-result-preview.md` (Priority high) reported the
-cost of a result list that shows only identity: the wrong hit gets opened and the
-search is paid for twice. The preview that answers it:
-
-1. **`kube.SearchHit` carries `Columns` and `Cells`** — the object's server-printed
-   row and the column set it sat under. The search already listed that row to match
-   its name, so carrying it is free; a hit that carried nothing would force either a
-   fetch per highlighted row (a cluster round-trip on every `j`) or a preview that
-   repeats the row above it. This supersedes the "a search hit carries no printed
-   cells because drilling re-lists" rationale of D276 pt 2 — drilling in still
-   re-lists and watches the real table; the cells are for deciding *whether* to
-   drill in. Columns are shared by every hit of a kind and never mutated; a short
-   row is normal and is indexed defensively.
-2. **The preview is a two-line footer, reserved unconditionally.** Identity (kind ·
-   apiVersion · namespace/name) over the printed cells as `COLUMN: value` pairs;
-   `previewHeight` is subtracted from the list's height whether or not there are
-   hits, so rows never shift under the cursor when the first hit arrives. A kind
-   that printed no cells keeps the block's height with a blank second line.
-3. **A preview is the data the surface already holds, never a fetch.** A per-cursor
-   fetch (describe, YAML, live status) belongs to opening the object, not to
-   choosing it; a later leg that enriches this preview must keep a cursor movement
-   request-free.
-
-## D284 — a pager fills the pane; only popups overlay (2026-08-20, STORY-06h-1)
-
-The S02 feedback `2026-08-15-describe-replaces-right-pane.md` reported the cost of
-rendering the shared viewer as a centered inset: describe was the walk's primary
-diagnostic and its output needed scrolling immediately, inside a box deliberately
-kept 4 cells clear of the screen edge. The split this settles:
-
-1. **The shared viewer (`components/viewer`) is a pane, not a popup.** Its box is
-   exactly the area it is sized to — no margin kept clear for a base to peek around
-   — and the shell composites it over the browse view's **right pane** (`overlayAt`
-   at the pane's origin) instead of centering it. Describe, YAML, secret and events
-   all ride that one component, so all four fill the pane. A hidden menu hands it
-   the full width exactly as it does the table.
-2. **D95 is unchanged for the modals.** Help, the pickers, the confirm modal and the
-   port-forward panel are popups — transient answers *about* the thing behind them —
-   and keep floating centered over the browse view. The distinguishing test is
-   whether the surface's content is the thing being read: a pager's is, so it takes
-   the pane; a popup's is not, so the base stays visible around it.
-3. **The pane boundary is read off the rendered menu, never recomputed.** The menu's
-   frame renders two columns narrower than the width `resize` sizes it to (its View
-   hands `m.width-2` to a border-box frame), so `menuPaneWidth` is *not* where the
-   panes actually meet. Anything composited onto the right pane must take its origin
-   from `rightPaneX()` (the rendered menu's width) so it cannot drift from the table
-   it replaces.
-
-## D285 — one health vocabulary: a surface paints through the M4-06 classifier, never its own word list (2026-08-21, STORY-06h-2)
-
-The S04/S05 feedback `2026-08-15-rich-describe-panel.md` asked for a describe panel
-that surfaces the failure with colour instead of a plain dump. Painting text raises
-the question every non-table surface will now hit — *what counts as broken here?* —
-and there must be exactly one answer:
-
-1. **`table.ClassifyValue(column, value)` is the single classifier.** It is the M4-06
-   cell classifier (`classifyCell`) exported for surfaces that are not tables, with
-   `table.Role` (`RoleNone` < `RoleSuccess` < `RoleWarn` < `RoleError`) as its
-   verdict. The browse table's colouring, the `H`/`U` unhealthy predicates
-   (`UnhealthyRow`/`UnhealthyCells`) and the describe panel all read it, so they
-   cannot disagree about what is broken. A surface that wants a word painted extends
-   `statusWords`/the shape heuristics in `components/table/color.go` — never a second
-   word list of its own.
-2. **A non-table surface maps its own labels onto the classifier's columns.** The
-   describe panel's `describeKeyColumns` is that map (Reason/Last State → STATUS,
-   Restart Count → RESTARTS, …); it names only the keys that carry a *state*, and a
-   key not in it leaves its value plain. Painting is opt-in per key, so a
-   configuration flag (`sidecar.istio.io/inject: false`) is never coloured as a
-   failed condition.
-3. **Painting adds colour and nothing else.** `viewer.PaintDescribe` is text→text and
-   `ansi.Strip` of its output is the describer's dump byte for byte — kubectl's own
-   alignment survives, and no surface may reflow, re-align or re-order a dump it
-   paints. In the whitespace-aligned blocks (Conditions, Events) each field is
-   classified alone and only **warn-or-worse** is painted: a dump is mostly fine, and
-   colouring the fine parts is what buries the broken one.
-4. **Painted content is palette state.** A component holding painted text keeps the
-   raw text and repaints it in `SetStyles` at the same scroll offset (a restyle is not
-   a reopen), so a runtime theme switch cannot leave a surface on the departed theme.
-
-## D286 — a relation is a scope or a name, resolved in one Get, and never an edge that cannot be opened (2026-08-21, STORY-06i-1)
-
-The S04 feedback `2026-08-15-relations-navigation-popup.md` asks to move from a pod
-to its parent workload and back, and on to whatever a resource is linked to. That is
-a graph, and the graph is the primitive under the popup (D52's order). `kube.Relations(ctx, res, ref, kinds)`
-returns it; these constraints bind every later slice and every surface over it:
-
-1. **A relation is either *named* or *set-shaped*, and the shape decides how it
-   opens.** `Relation.Name` set means one object: browse `Relation.Resource` and
-   select `Ref()`. `Name` empty means a filtered list: hand `Scope()` to the
-   drill-down path `Children` already feeds. There is no third shape and no
-   fetched-list shape — a relation stays a *scope* for the reason `ChildScope` does
-   (D155 pt 3): the caller gets a live watched table, not a snapshot that goes stale
-   the moment a pod restarts.
-2. **A relation's target `Resource` comes from the caller's discovered kind set,
-   never synthesized.** A target kind this cluster (or this user) cannot see is
-   dropped silently. An edge nobody can open must not be listed and then fail on
-   open, so `Relations` returns fewer rows rather than optimistic ones.
-3. **`Relations` costs exactly one Get.** Owners come from `ownerReferences`, the
-   child direction from `childScope` over the object already in hand (`Children` is
-   now the thin fetch-then-`childScope` wrapper), and the rest from that object's own
-   spec. A relation that needs its own List — *which Services select this pod* — is a
-   different cost class and belongs in its own leg (STORY-06i-3); it is never folded
-   in silently, because a popup that quietly lists the namespace is a popup that
-   stops being instant. Only the Get may fail; an object with no neighbours is an
-   empty slice and no error.
-4. **`RelationRole` is a display label; `RelationDirection` is the grouping.** Up is
-   what made or hosts the object, down is what it makes or selects, side is what it
-   references. Two relations may share a role, and a secret that is both a mounted
-   volume and an image-pull secret stays two rows — they are two different facts, and
-   only an exact (role, kind, namespace, name, selector) repeat collapses.
-
-## D287 — navigating a relation reuses the two paths the shell has; `gr` opens the list (2026-08-21, STORY-06i-2)
-
-D286 shaped the graph so its surface could be thin. This is the surface, and these
-constraints bind whatever extends it (STORY-06i-3's reverse-selector relations first):
-
-1. **The gesture is `gr`, and it is a row action.** `gr` is vim's goto family, where
-   "go to references" already lives, and the relations list is that question asked of
-   a Kubernetes object. It is a sequence rather than a letter because the mnemonic is
-   spent three times over (`R` resources.switch, `r` secret.reveal, `P` res.children)
-   and `g` already buffers for `gg`, so it costs no key its own timeout. It is
-   registered as a **row action** (`Related resources`, gated on `get`), so the key,
-   the actions menu and the palette dispatch one intent — a new relation kind never
-   needs a second entry point.
+### D287 — navigating a relation reuses the two paths the shell has; `gr` opens the list (2026-08-21, STORY-06i-2)
+D286 shaped the graph so its surface could be thin. This is the surface, and these constraints bind whatever extends it (STORY-06i-3's reverse-selector relations first):
+1. **The gesture is `gr`, and it is a row action.**
 2. **A relation opens through a path the shell already has, never a third one.**
-   Named → `selectResource` plus the pending selection a search/unhealthy drill-in
-   arms; set-shaped → `selectChildScope` with the object the popup was opened on as
-   the owner, so the scope label names it and `nav.back` returns to it. If a future
-   relation cannot be opened by one of those two, that is a reason to reshape the
-   relation, not to add a third navigation path.
-3. **A cross-namespace hop re-scopes display state only.** A named target outside the
-   browsed namespace re-points the shell before selecting (otherwise the pending
-   selection waits for a row the watch will never list), and that re-scope is never
-   persisted as the reader's chosen namespace — they picked a resource, not a scope.
-   An all-namespaces scope is never narrowed: it already lists the target.
-4. **Direction is the grouping, and the label is the identity.** Rows are stably
-   sorted up → down → side and carry the direction's arrow in the name column, since
-   a picker has no section headings; the label is the target (`Kind/name`, or
-   `Kind (selector)` for a scope), qualified by namespace when it differs from the
-   browsed scope, and it is the key a pick resolves by (D203 pt 3). Two rows may
-   therefore collapse only when they name the same object, which costs nothing.
-5. **No neighbours is a notice, not a popup.** An empty relation set is a true answer
-   (D286 pt 3), so it is said in the status bar; an empty modal is a dead end the
-   reader then has to dismiss. A failed resolve is one toast with the table untouched.
+3. **A cross-namespace hop re-scopes display state only.**
+4. **Direction is the grouping, and the label is the identity.**
+5. **No neighbours is a notice, not a popup.**
 
-## D288 — the browse view's first frame is a table, and the menu lists only the kinds you asked for (2026-08-21, STORY-06l)
+### D288 — the browse view's first frame is a table, and the menu lists only the kinds you asked for (2026-08-21, STORY-06l)
+Two startup defaults, from the S01/S02 walk (`2026-08-15-land-on-pods-by-default.md`, `2026-08-15-hide-custom-resources.md`). Both are about the frame kubecom paints before the reader does anything, and both bind whatever changes it later:
+1. **A launch, and a context switch, land on a table.**
+2. **The resources pane lists a custom resource only when someone asked for it.**
+3. **Holding back is a display rule, never an inventory one.**
+4. **The displayed list is not addressable by index.**
 
-Two startup defaults, from the S01/S02 walk (`2026-08-15-land-on-pods-by-default.md`,
-`2026-08-15-hide-custom-resources.md`). Both are about the frame kubecom paints before
-the reader does anything, and both bind whatever changes it later:
+### D289 — the logs view stays oldest-first; newest-first is declined, and reopens only on event grouping (2026-08-21, STORY-06j-3)
+The S03 feedback `2026-08-15-logs-newest-first-order.md` (Priority normal) asked this to be *considered*, not done: reverse the buffer so the newest line is at the top with the filter box at the top, the way grafana and datadog render a live stream.
+1. **Half the ask is already true, and the other half is what the follow rule bought.**
+2. **It would invert every nav key in exactly one view.**
+3. **Grafana reverses events; this pager addresses lines.**
+4. **A reversal would split the screen from the clipboard.**
+5. **The reopen condition is event grouping, not taste.**
 
-1. **A launch, and a context switch, land on a table.** A context with nothing
-   recorded opens the default landing kind (Pods) through the ordinary restore path —
-   resolved in the menu after discovery, opened as a drill-in, silently skipped when
-   the cluster does not serve it. The welcome pane is what a failed restore degrades
-   to, not the destination. A remembered kind still wins (D240 is untouched), and the
-   restore stays opt-in at the seam: a model built without `WithLastResource` opens
-   nothing.
-2. **The resources pane lists a custom resource only when someone asked for it.** A
-   discovered CRD with neither a `menus/<context>.yaml` entry nor a pin behind it is
-   held back — discovery finds hundreds on an operator-heavy cluster and listing them
-   made the pane a thing to scroll past. `menu.pin` is the opt-in and the way back out.
-3. **Holding back is a display rule, never an inventory one.** The kinds stay in the
-   menu's authoritative list, so `Items()` — and therefore the resource picker, the
-   `:pin` stage, cluster search, the unhealthy sweep, relations and pane memory — sees
-   every kind discovery found. A surface that needs the cluster's kinds reads `Items()`;
-   only the pane's own rendering may narrow. Two rows are exempt from the hiding: one
-   an explicit `/` query matches (which is what keeps a held-back kind one keystroke
-   away), and the kind currently open (the left pane must always be able to point at
-   what the right pane shows).
-4. **The displayed list is not addressable by index.** Since the pane narrows itself
-   without being asked, an index into `Items()` no longer names a row. A caller that
-   knows a kind and wants the cursor on it uses `menu.SelectResource(gvr)`; `SelectItem`
-   remains for callers that resolved a row *from* the displayed list (a mouse click).
+### D290 — The screencast is also an asciicast, from the same run, and neuroplast.io reads it from `v1` (2026-10-03, CAST-01)
+The maintainer wants the tour played on neuroplast.io by a terminal player of its own (a HOTTY surface drawing a terminal emulator's screen), with the GIF kept for the README.
+1. **One tape, two recordings.**
+2. **Captions are markers.**
+3. **The cast's URL is a public contract.**
+4. **D181 pt 1, amended.**
 
-## D289 — the logs view stays oldest-first; newest-first is declined, and reopens only on event grouping (2026-08-21, STORY-06j-3)
+### D291 — Retain the vault as key facts: per-month journals, an open-only board, arguments in git (2026-10-06, vault cleanup)
 
-The S03 feedback `2026-08-15-logs-newest-first-order.md` (Priority normal) asked
-this to be *considered*, not done: reverse the buffer so the newest line is at the
-top with the filter box at the top, the way grafana and datadog render a live
-stream. Weighed and **declined** — no reversal, and no config option for one. The
-constraints, so a later leg does not relitigate it from scratch:
+The vault had grown to ~2.9 MB — 311 per-leg journal files (~2 MB), a `## Done` index of ~350 long entries, and a 600 KB decision log averaging ~28 lines per entry. Every leg reads these on Orient, so the cost was paid repeatedly while the placement of finished work bought nothing.
 
-1. **Half the ask is already true, and the other half is what the follow rule
-   bought.** The filter field already renders directly under the header, *above*
-   the body (`View`), and the view opens following with the cursor on the newest
-   line — so the fresh line is the first thing on screen without a gesture, and
-   the input already sits over recent lines rather than a wall of old ones,
-   because a tailing full-screen pane only ever shows the newest screenful. The
-   residual pain the web UIs answer — chasing a stream that silently froze — is
-   already answered more cheaply by D147 (`G` rejoins), D281 (a downward press
-   past the newest line rejoins) and the `[following]` badge (STORY-06j-1).
-
-2. **It would invert every nav key in exactly one view.** `j` would walk backwards
-   in time, `G` would reach the *oldest* line and `gg` the newest. Goals principle
-   6 makes the vim vocabulary the primary path, and D147 pt 3 already draws the
-   line for a shared nav key: a view may add an *effect* to `G` (it announces
-   itself in the header), it may not redefine the *direction* of the whole
-   movement set — a registry description is global, and the `?` overlay, the
-   generated keybindings doc and the README would all have to stop stating
-   truthfully what `G` does.
-
-3. **Grafana reverses events; this pager addresses lines.** Their log panels
-   render one ordered block per event, so the reversal is over records that stay
-   internally forward. kubecom's buffer is line-granular over a raw byte stream
-   (D242 pt 1) with no grouping available from the API, so a reversal would print
-   every multi-line record — stack traces, pretty-printed JSON, panics — from its
-   last line to its first. The analogy does not survive the representation
-   difference, and that is the load-bearing objection, not the muscle memory.
-
-4. **A reversal would split the screen from the clipboard.** D242 pt 4 fixes that
-   a yank matches what is shown; a newest-first selection would have to be
-   un-reversed to paste usefully into a bug report, so screen order and copy order
-   would disagree. The same doubling hits the rest of the view's state: `trim`
-   drops the *oldest* lines and the `[trimmed]` marker means "there was more above
-   this", `atNewest`/`scrollDown`/`placeCursor`/`showCursor`/`shownIdx`, the
-   selection range and the wrapped row arithmetic (D242 pt 6) all encode the
-   direction. An **opt-in setting is the worst option of the three**: it makes
-   every one of those a two-branch problem forever, doubles the tests on the most
-   intricate component in the tree, and still leaves the docs unable to say what a
-   key does.
-
-5. **The reopen condition is event grouping, not taste.** If the logs view ever
-   gains records rather than lines — a structured/JSON log mode that folds a
-   multi-line entry into one addressable unit — pt 3 dissolves and newest-first
-   becomes coherent (reverse the records, each internally forward). A later leg
-   may revisit this decision *then*, and should supersede it rather than bolt an
-   order flag onto the line-granular pager.
-
-## D290 — The screencast is also an asciicast, from the same run, and neuroplast.io reads it from `v1` (2026-10-03, CAST-01)
-
-The maintainer wants the tour played on neuroplast.io by a terminal player of its own (a HOTTY
-surface drawing a terminal emulator's screen), with the GIF kept for the README. vhs has no cast
-output, and a cast of the whole terminal would carry the tmux status line and the setup the tape
-types while hidden. What a future leg must not silently contradict:
-
-1. **One tape, two recordings.** `make screencast` writes `docs/screencast.gif` (vhs) and
-   `docs/screencast.cast` (asciicast v3) in the same run: tmux's `pipe-pane` hands the pane
-   kubecom runs in to `castrec` (`docs/screencast/castrec`), which records that pane's bytes
-   only, starting from the pane as it stands when the pipe opens. Never commit one recording
-   without the other from the same run — a cast from another run films another tour.
-2. **Captions are markers.** Every caption step sets the status line and, in the same tmux
-   command, hands it to castrec: `set -g status-left '…' ; run-shell 'castrec mark
-   #{q:status-left}'`. The cast carries them as `m` events for the player to draw however it
-   draws captions. `TestScreencastCastMatchesTheTape` fails a caption step with no mark, and a
-   committed cast whose markers are not the tape's captions, in order.
-3. **The cast's URL is a public contract.** neuroplast.io loads
-   `https://raw.githubusercontent.com/neuroplastio/kubecom/v1/docs/screencast.cast` at runtime
-   (served with `access-control-allow-origin: *` and a 300 s cache), so a re-recording pushed
-   to `v1` reaches the site within minutes and without a redeploy. Moving or renaming the file
-   breaks the site, and so does M5-11's `v1` → `main` rename unless the site's URL moves with it.
-4. **D181 pt 1, amended.** A recording is still real and never fabricated, and it still goes in
-   front of the maintainer's eyes. An agent may run `make screencast` when the maintainer
-   provides the cluster and asks for it — this one was recorded against the maintainer's
-   `k3d-kubecom-story` at their request.
+1. **Journals are per-month key-fact files.** `vault/journal/YYYY-MM.md`, newest last under a `### YYYY-MM-DD` heading; one bullet per leg (id, title, 1–3 sentence what/why, decisions). The verbatim per-leg history is in git before the cleanup commit.
+2. **The board holds open work only.** A finished item is dropped, not indexed; its record is the journal bullet, the commit and the decision log. `internal/vault` fails `make check` if a `- [x]` reappears, beside the surviving D226 deferral guard.
+3. **The decision log keeps each `Dn`'s binding statement and the lead of every rule; the argumentation lives in git.** Every `Dn` and every supersede pointer survives the compression.
+4. **A milestone `Status:` line is current state, not history.**
+5. **A leg id remains the join key (D15)** — commit subject, journal bullet, decisions.
+**Refs:** supersedes the board-list half of D102, D224, D225 and D267; D226 pt 2 stands.

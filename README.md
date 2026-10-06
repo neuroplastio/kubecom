@@ -21,7 +21,7 @@ in-cluster deployment and **no `kubectl` binary required**.
 > and AUR paths start working with it.
 >
 > The rewrite is driven autonomously and documents itself in **[`vault/`](vault/)**
-> (goals, plan, live task board, decision log, per-leg journal); see
+> (goals, plan, live task board, decision log, per-month journal); see
 > [`CLAUDE.md`](CLAUDE.md) for the operating model.
 
 ## Why kubecom

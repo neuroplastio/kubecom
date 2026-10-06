@@ -1,31 +1,36 @@
 # Execution Journal
 
-One file per **leg** (see [`/CLAUDE.md`](../../CLAUDE.md) and the
-[`/do-rewrite-leg`](../../.claude/skills/do-rewrite-leg/SKILL.md) skill), named
-**`YYYY-MM-DD.N.md`** where `N` is the entry's sequence number within that day
-(1, 2, …). This is how a human reviews progress and how a cold-started agent
-learns what just happened.
+A compressed, per-month changelog of the rewrite's legs. One file per month,
+named **`YYYY-MM.md`**. Entries are appended at the bottom, newest last, each
+under a `### YYYY-MM-DD` date heading (add the heading when the day's first leg
+lands). This is how a human reviews progress and how a cold-started agent learns
+what just happened.
 
-> **`N` is not zero-padded, so lexicographic order is _not_ chronological once a
-> day reaches 10 entries** — `ls`/glob sort puts `.10`…`.16` *before* `.2`, so a
-> plain `ls | tail -3` returns `.7 .8 .9`, which may be neither the newest nor
-> even recent. **Order by the numeric `N`**, e.g.
-> `ls vault/journal/ | sort -t. -k1,1 -k2,2n | tail -3`. "The 3 newest entries"
-> means the 3 highest `N` for the latest date.
+## Entry format
 
-There is no `Commit:` field — the entry is written before the commit exists.
-The **leg id in the commit message** (e.g. `M0-01`) is the join key between a
-journal entry, the board, and git history (D15).
-
-Entry template:
+One bullet per **leg** (see [`/CLAUDE.md`](../../CLAUDE.md) and the
+[`/do-rewrite-leg`](../../.claude/skills/do-rewrite-leg/SKILL.md) skill). Keep it
+to the key facts — the full rationale for a leg belongs in the decision log and
+the commit, not here:
 
 ```
-## YYYY-MM-DD — <leg-id>: <short title>
-- Agent: <model/id>
-- Milestone: M<x>
-- Did: <1–3 lines on what changed and why>
-- Decisions: <Dnn one-liner, or "none">
-- Files: <key paths touched>
-- Verify: build ✓ · test ✓ · vet ✓ · lint ✓  (note any N/A)
-- Next: <suggested next leg id + one line>
+- **<leg-id>** <short title> — <what changed and why, 1–3 sentences> _(Decisions: Dnn, …)_
 ```
+
+The parenthetical is omitted when the leg recorded no decision. There is no
+`Commit:` field — the entry is written before the commit exists. The **leg id in
+the commit message** (e.g. `M0-01`) is the join key between a journal entry, the
+board, and git history (D15); the date heading is the second.
+
+## History
+
+Until 2026-10-06 the journal was one file per leg (`YYYY-MM-DD.N.md`, `N` not
+zero-padded) — 311 files, ~2 MB. Those were collapsed into these per-month
+digests, key facts only (D291); the verbatim entries remain in git history at the
+commit before the cleanup. Two consequences worth knowing:
+
+- **Leg ids and decisions survive**, so the journal is still the changelog and
+  the D15 join key still resolves.
+- **The old `N` sequence is gone.** Nothing sorts by it any more: the newest work
+  is simply the bottom of the current month's file. Read the current month, or
+  `git log`, for the freshest detail.
