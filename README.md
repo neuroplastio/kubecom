@@ -219,6 +219,12 @@ plus a seed build it runs out of the box; `kubecom update` then updates the copy
 in `~/.local/kubecom` — see [`docs/install.md`](docs/install.md). The
 `v1.0.0-rc.1` archive below is superseded by that model.
 
+No root, no package manager — installs the launcher and a seed into your home:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/neuroplastio/kubecom/v1/install.sh | sh
+```
+
 The current release is the candidate **`v1.0.0-rc.1`**. Download the archive for
 your platform from the [Releases page](https://github.com/neuroplastio/kubecom/releases),
 or install it with Go (**1.24+**; Linux and macOS, Windows via WSL2):

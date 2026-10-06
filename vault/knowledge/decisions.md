@@ -1596,3 +1596,29 @@ with `~/.local/kubecom` empty, `pkg.neuroplast.io` down meant nothing to run, an
 3. **The launcher is rebuilt and version-stamped with every release**, reusing `DIST_LDFLAGS`, so `kubecom --launcher-version` names the packaged shim while `kubecom version` names the build actually running. It rides the seed's version rather than being byte-stable (supersedes D293 pt 1's "its bytes are its version", which was margin's D22 for a launcher-only package).
 4. **The seed location is package-manager-specific** — `/usr/lib/kubecom` suits the AUR; Homebrew on macOS is not `/usr/lib` — so ENGRAM-02 sets it per package.
 **Refs:** amends D293 (pt 3 supersedes its pt 1).
+
+### D296 — A no-root install script drops the launcher and seeds the home (2026-10-07, REL-06)
+
+`install.sh` installs kubecom into a directory the user owns, with no package
+manager: it reads the channel's `head`, verifies the signed manifest against the
+pinned release key (`ssh-keygen -Y verify`), fetches `kubecom-launcher_<os>_<arch>`
+and `kubecom_<os>_<arch>`, checks each sha256, installs the launcher at
+`${KUBECOM_BINDIR:-~/.local/bin}/kubecom`, and seeds the launcher's home
+(`~/.local/kubecom/builds/<commit>/kubecom` + a `bin` symlink) so the first run
+needs no network — the same launcher+seed combo the packages ship (D295), for a
+user without root. An existing home build (a self-updated install) is kept unless
+`KUBECOM_FORCE` is set. Channel, server, key and commit are overridable by
+environment so a mirror or a test can be pointed at, but the key is pinned in the
+script by default.
+
+### D297 — The AUR publish runs in CI, in an Arch container (2026-10-07, REL-07)
+
+Amends the "a human runs publish.sh" note. A stable release now publishes the AUR
+package from `.github/workflows/aur.yml`: on a day-named release (and on
+`workflow_dispatch` with a tag), it runs `packaging/aur/publish.sh <tag> <dir> --push`
+inside `archlinux:base-devel` as a non-root `builder` user, because `makepkg`
+refuses root and needs base-devel. It reads the private half of the AUR key from
+the `AUR_SSH_PRIVATE_KEY` repository secret and **skips** when it is absent, the
+way every other publisher here degrades rather than failing a release. The
+build-before-push validation (makepkg against the GitHub release) is unchanged;
+only who invokes it moved. The human-run path still works for a re-publish.
