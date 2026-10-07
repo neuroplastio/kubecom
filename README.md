@@ -214,4 +214,4 @@ it. There are five in [`stories/`](stories/) to copy the shape from.
 ---
 
 Licensed under [Apache-2.0](LICENSE). The original 2020 kube-commander lives on the
-[`master`](https://github.com/neuroplastio/kubecom/tree/master) branch.
+[`v0`](https://github.com/neuroplastio/kubecom/tree/v0) branch.
