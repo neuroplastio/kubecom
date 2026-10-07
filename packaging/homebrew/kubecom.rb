@@ -47,6 +47,9 @@ class Kubecom < Formula
     resource("seed").stage do
       (libexec/"kubecom-seed").install Dir["kubecom_*"].first => "kubecom"
     end
+    # The release assets are bare binaries, which brew downloads without the
+    # executable bit.
+    chmod 0755, [libexec/"kubecom-launcher", libexec/"kubecom-seed/kubecom"]
 
     # bin/kubecom seeds the launcher's home from the packaged build on first
     # run, then hands over. The home is enlaunch's default (~/.local/kubecom);
