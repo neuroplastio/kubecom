@@ -15,6 +15,8 @@ Use it for things the autonomous loop genuinely cannot do itself:
 - **A genuine human judgment call** the agent shouldn't decide alone.
 
 If this directory contains only this README, there are no open human tasks.
+It was emptied on 2026-10-07 (D300): the open packaging/release tasks were
+retired with the rewrite's end. Git history keeps them if they are needed again.
 
 ## File format
 
@@ -27,7 +29,7 @@ non-task file). Mirrors the other vault files:
 - Created: YYYY-MM-DD
 - By: <leg id / agent that raised it>
 - Priority: normal | high | blocker
-- Blocks: <comma-separated board task ids (e.g. M2-10, M2-11)  |  milestone:M2  |  none (advisory)>
+- Blocks: <comma-separated board task ids (e.g. DOC-03, ENGRAM-02)  |  area:docs  |  none (advisory)>
 - Status: open            # the human flips this to `done` when finished
 
 ## What's needed
@@ -48,9 +50,9 @@ file if nothing needs to flow back. Findings/bugs you want acted on go in
 At the **Orient** step of every leg the agent lists this directory, then:
 
 1. **An open task with `Blocks:` constrains what the agent may pick.**
-   - `Blocks: M2-10, M2-11` → the agent will not start those legs; it picks other
+   - `Blocks: DOC-03, DOC-04` → the agent will not start those legs; it picks other
      unblocked work.
-   - `Blocks: milestone:M2` → the agent does not advance M2 at all.
+   - `Blocks: area:docs` → the agent does not advance the docs work at all.
    - `Blocks: none` → advisory only (a reminder), blocks nothing.
 2. **Blocking never means spinning or busywork.** If open human tasks block *all*
    otherwise-available work, the agent does **not** invent low-value legs — it

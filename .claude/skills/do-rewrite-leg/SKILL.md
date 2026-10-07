@@ -19,8 +19,8 @@ if not already in context. Follow these steps in order.
   conflicts; if non-trivial, that becomes your leg (fix the conflict, nothing else).
 - Ensure a clean tree (`git status`). If dirty from an interrupted leg, assess:
   finish or revert it — never build on an unknown dirty state.
-- Read: `vault/goals.md`, the **active milestone** in `vault/milestones/`, the top
-  of `vault/tasks/board.md`, and the **tail of the current month's journal** —
+- Read: `vault/goals.md`, `vault/PLAN.md`, the top of `vault/tasks/board.md`, and
+  the **tail of the current month's journal** —
   `vault/journal/YYYY-MM.md`, newest entries last. (The month file is a key-fact
   changelog; the verbatim history lives in git.)
   Skim `vault/knowledge/decisions.md` for anything relevant.
@@ -47,13 +47,12 @@ if not already in context. Follow these steps in order.
   first slice; if it's a question/direction, decide and record it. **Delete the
   feedback file in this leg's commit** and link it from the journal entry. Only with
   an empty inbox do you pick from the board.
-- Otherwise take the **top unblocked** Backlog item for the active milestone (respect
-  milestone order M0→M5).
+- Otherwise take the **top unblocked** Backlog item.
 - **Size it.** A leg must be completable now and leave the tree green. If the item
   is too big, **split it**: write the smaller slices back into the Backlog and take
   the first slice.
-- If the active milestone's board section is thin or vague, **expanding it into
-  concrete small tasks is itself a valid leg** — do that and stop.
+- If the board's relevant section is thin or vague, **expanding it into concrete
+  small tasks is itself a valid leg** — do that and stop.
 - A leg is one logical change, diff roughly ≤ ~300 lines.
 
 ## 3. Claim it (and push the claim)
@@ -82,10 +81,10 @@ if not already in context. Follow these steps in order.
   or revert and pick a smaller leg. Never push red.
 - For UI/behavior changes with a runtime surface, sanity-check the behavior, not
   just compilation.
-- Once `kubecom` launches (M2-RUN onward): keep it **launchable** and don't
-  regress the running binary — the human dogfoods it against a real cluster
-  between reviews, so each leg should improve that experience (D68). If a leg
-  changes install/launch/config/usage, update `README.md` in the same leg.
+- Keep `kubecom` **launchable** and don't regress the running binary — the human
+  dogfoods it against a real cluster between reviews, so each leg should improve
+  that experience (D68). If a leg changes install/launch/config/usage, update
+  `README.md` in the same leg.
 - If a leg genuinely needs a human (a real-cluster/visual-UX check, credentials,
   envtest run locally, an irreversible action), **raise a `vault/human-tasks/`
   file** with a conservative `Blocks:` — never claim a verification you couldn't
@@ -101,7 +100,7 @@ if not already in context. Follow these steps in order.
 - Add durable learnings (API quirks, legacy behavior, gotchas) to the relevant
   `vault/knowledge/` file so the next agent doesn't re-derive them.
 
-## 7. Journal, board & milestone
+## 7. Journal & board
 
 - **Drop the finished item from `board.md`** — the board holds open work only
   (D291), so a completed item is removed rather than indexed; its record is the
@@ -112,10 +111,8 @@ if not already in context. Follow these steps in order.
   `vault/journal/YYYY-MM.md` — under a `### YYYY-MM-DD` heading (add the heading
   if this is the day's first leg) — using the template below. Keep it to the key
   facts; the full rationale goes in the commit and the decision log, not here.
-- Update the active **milestone file**: tick exit criteria now met; keep its
-  `Status:` line current (`todo`/`in-progress`/`done`) (D15). The `Status:` line
-  and the board's `Last updated:` line are **one sentence each** — the journal is
-  the changelog, not these fields (D67).
+  The board's `Last updated:` line is a **single sentence** — the journal is the
+  changelog, not that field (D67).
 
 ## 8. Commit & push
 

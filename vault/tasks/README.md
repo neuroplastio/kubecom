@@ -7,9 +7,8 @@ can see what's in flight and pick up work without external context.
 
 - **[`board.md`](board.md)** — the live board: Backlog / In Progress / Blocked.
   Completed items are dropped, not kept (D291); the journal, commits and the
-  decision log are their record.
-- Milestone files in [`../milestones/`](../milestones/) hold the coarse checklists;
-  the board holds the fine-grained, actively-worked items.
+  decision log are their record. There are no milestone files any more (D300):
+  the rewrite is complete, and [`../PLAN.md`](../PLAN.md) holds the forward plan.
 
 ## Workflow
 
@@ -28,10 +27,10 @@ can see what's in flight and pick up work without external context.
 ## Item template
 
 ```
-- [ ] **M1-03** Async discovery: background full discovery + reconcile signal
-      status: todo | owner: — | added: 2026-07-18
-      notes: seed set first-paints; emits DiscoveryReady to menu
-      → milestone: M1 · knowledge: knowledge/stack.md
+- [ ] **DOC-05** `docs/troubleshooting.md`
+      status: todo | owner: — | added: 2026-08-15
+      notes: the failure surfaces exist and are documented nowhere a user looks
+      → knowledge: decisions.md D268
 ```
 
 Status vocabulary: `todo` · `in-progress` · `blocked` · `done`.

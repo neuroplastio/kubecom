@@ -11,13 +11,13 @@ You only prime the checkout, spawn subagents, read their reports, and decide
 whether to continue. This keeps your context small; each leg gets a fresh
 subagent context instead (D21).
 
-## 0. Prime the environment (fresh cloud checkouts start on `master`)
+## 0. Prime the environment (fresh cloud checkouts start on `v0`)
 
 - `git fetch origin main && git checkout main && git pull --rebase origin main`.
   All process files (CLAUDE.md, skills, vault) live only on `main`.
 - Set the repo-local git identity — cloud checkouts default to a Claude
-  identity, but commits must be authored by the maintainer (per CLAUDE.md):
-  `git config user.name "Anatoly Rugalev" && git config user.email "anatoly.rugalev@gmail.com"`.
+  identity, but commits must be authored as the repository's agent identity:
+  `git config user.name "Kubecom Agent" && git config user.email "kubecom@neuroplast.io"`.
   Repo-local config persists in the shared checkout, so leg subagents inherit it.
 - Ensure the gate tooling exists: `golangci-lint version` — if missing,
   `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`

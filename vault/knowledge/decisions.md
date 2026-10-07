@@ -1651,3 +1651,28 @@ via `HOMEBREW_TAP_TOKEN`, skipping without it. The seed's build directory is nam
 for the release commit (40 hex), so enlaunch's home layout and pruning stay
 correct. Published for 26.10.07, the first formula; the tap's default branch is
 `master`.
+
+### D300 — The rewrite is over: milestones retired, the plan is current, the vault keeps key facts (2026-10-07, vault cleanup)
+
+The maintainer asked for a fresh start: "drop completed items, rewrite plan doc,
+… without losing key work. Drop all human tasks."
+
+1. **Milestones are retired.** M0–M5 described a rewrite that is finished and
+   shipped; a milestone file that can never advance is history, not a plan. The
+   five files and `milestones/README.md` are deleted, and `CLAUDE.md`, the leg
+   skill, the vault README and the board no longer know the word. Their content,
+   including the box-by-box Definition-of-Done audit, survives in this log, the
+   journal and git (D291).
+2. **`PLAN.md` replaces `REWRITE_PLAN.md`.** The old file planned the rewrite
+   (protobuf removal, the `v1` branch, five phases); the new one states the
+   architecture as built, the channel/launcher release model, and the remaining
+   roadmap. History stays in this log, not in the plan.
+3. **`goals.md` is compressed** to the vision, the shipped definition of done,
+   the two administrative leftovers, the non-goals and the principles. The
+   per-box audit annotations are gone.
+4. **`human-tasks/` is empty.** The open packaging/release tasks were retired
+   with the rewrite's end; git keeps them if they are needed again.
+5. **The board is open work only**, grouped by workstream rather than milestone
+   (D291 stands).
+6. **The branch model says `v0`**, reflecting the 2026-10-07 rename of `master`.
+**Refs:** extends D291 to the milestones and the plan; supersedes `REWRITE_PLAN.md`.

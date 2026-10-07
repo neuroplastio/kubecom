@@ -2,210 +2,49 @@
 
 ## Vision
 
-Rewrite the 2020 kube-commander into **kubecom**: a fast, approachable,
-keyboard-driven terminal UI for observing and operating Kubernetes clusters.
-Keep the original idea — *"kubernetes-dashboard in your terminal"* — while
-replacing the aging foundation with a modern Go TUI stack and closing the
-long-standing issues.
+A fast, approachable, keyboard-driven terminal UI for observing and operating
+Kubernetes clusters — *"kubernetes-dashboard in your terminal"*.
 
-## Primary goal
+kubecom is the ground-up rewrite of the 2020 **kube-commander** on a modern Go
+stack: same idea, no legacy. It reaches feature parity with the original,
+eliminates its data-race / focus / redraw bug class by construction, removes the
+hard `kubectl` binary dependency, and adds the high-value capabilities the
+original lacked.
 
-Ship a Kubernetes TUI on **Bubble Tea + client-go** that reaches feature parity
-with the original, eliminates its data-race / focus / redraw bug class by
-construction, removes the hard `kubectl` binary dependency, and adds the
-high-value capabilities the original lacked.
+## Definition of done (v1) — shipped
 
-## Definition of Done (v1)
+The v1 promises are met in substance and released (stable `26.10.06`/`26.10.07`
+on the engram channels and the packages). The delivery criteria were audited box
+by box (M5-01/D174 and the review fold-ins that followed):
 
-_Audited item by item against named evidence by **M5-01** (2026-07-30, D174): 6 of 13 ticked
-then, **9 of 13 as of HT-dogfood-0806** (2026-08-06), **11 of 13 as of the 2026-08-09 review
-fold-in (D256)**, and every unticked box names the one thing that closes it. A box is ticked
-only when its claim is decidable from the code and its tests, or has been confirmed by a human
-against a real cluster — never to make the list read as finished (D79/D174). The three that
-closed on 2026-08-06 are the two `$EDITOR` boxes, on the maintainer's live-cluster
-confirmation, and the migration box, which closes on the generated fixture **and says so**
-because no real legacy file survives to run it against (D231). The two that closed on
-2026-08-09 are the context switch and the CRD/generic-listing box, both on maintainer waiver
-(D256 pts 1/3: the remaining live QA was declined, "we'll ship it like this") — each box says
-so. The two still open are release acts that have not happened: the goreleaser tag artifacts
-and the issue-tracker sweep, both waiting on the first release tag (a human act, D173).
-**M5-01b** (2026-07-30, D178)
-amended the wording of the logs/describe/YAML bullet — the one amendment made to a claim in
-this list, made on the maintainer's own recorded feedback and not on the agent's reading of
-the code; the original text is preserved in that bullet's annotation._
+- Two-pane browse, generic CRD listing, logs/describe readers, in-place editing,
+  the curated in-process action set, context/namespace switching, vim-first
+  navigation, fully rebindable keys, responsive cold start, no required
+  `kubectl`, and config migration are all done and evidenced.
+- No `kubectl` binary is required anywhere except the optional exec fallback.
+- The read-only YAML viewer was deliberately folded into the `$EDITOR` edit flow
+  (D135/D178).
+- The context switcher and the CRD listing closed on the maintainer's recorded
+  waivers, with the hermetic coverage named as the standing verification
+  (D256).
 
-- [x] Two-pane browse UX (resource menu + live-watched table) at parity with the original.
-      (M2 exit criteria 1–2: menu drill-in → `kube.Watch` deltas pumped into the table —
-      `TestSelectResourceStartsWatch`, `TestWatchClosedStopsChain`, `TestProgramFilterFlow`
-      end-to-end through the real program — and live browse + drill-in was human-confirmed
-      against a real cluster on 2026-07-24. Two differences from the 2020 UX are recorded
-      decisions, not gaps: menu customization is the per-context `menus/<context>.yaml` file
-      instead of in-TUI add/hide/reorder (D83/D89), and the menu pane is optional with a
-      `:` resource palette beside it (D96/D100).)
-- [x] Resource listing works generically for **any** resource incl. CRDs (discovery-driven, kubectl-identical columns).
-      (Mechanism complete: server-side Table printing for any GVR, CRD
-      `additionalPrinterColumns` included (`internal/kube/table.go`, D33); discovery folds
-      CRDs into the menu (`TestDiscoveryReadyReconcilesMenu`, with a CRD); CRD group
-      list/watch param encoding fixed (D103); kinds without `watch` degrade to list-only
-      polling (D104). It was unticked on an open bug — CRD-01, a real `ExternalSecret`
-      erroring instead of listing — and **that bug is gone**: its human task came back *not
-      reproducible* on 2026-08-01, and the difference between the two clusters is a
-      conversion webhook, which fails the LIST in the apiserver and kills `kubectl` with it
-      (D191 pt 1). So no CRD is reported broken any more. The two later holdouts are both
-      closed: the re-scoped CRD-01 — say *why* a group's LIST failed, on screen — landed
-      2026-08-02 (D200), and the remaining one, a human driving a CRD-heavy cluster beyond
-      that one confirmed listing, was **declined by the maintainer 2026-08-09** ("not
-      important … do not care") with the hermetic coverage named as the standing
-      verification (D256 pt 3). **Ticked 2026-08-09** on that coverage plus the one
-      human-confirmed real-cluster CRD listing, in the D231 shape — the live evidence was
-      waived by its reviewer, not produced.)
-- [x] In-TUI logs and describe viewers; an object's YAML round-trips through your `$EDITOR`
-      (no external pager required).
-      (**Wording amended by M5-01b, 2026-07-30, D178.** It read "In-TUI logs, describe, and
-      YAML viewers (no external pager required)" until then. M5-01's audit found the YAML
-      third had stopped describing kubecom — D135/D136/M3-15c retired the standalone
-      read-only YAML viewer and made `e` open the object's YAML in `$EDITOR` — and filed the
-      call as a maintainer decision (D174 pt 3). **The maintainer had already made it**, in
-      their own words, in the feedback that caused D135: "Having a separate read-only YAML
-      viewer (`y`) and a separate edit (`e`) action is redundant … prefer suspending to the
-      user's real `$EDITOR` … that IS the 'proper editor' for YAML"
-      (`vault/feedback/2026-07-24-unify-yaml-view-and-edit.md`, deleted per D69 when
-      addressed, readable at `git show 7897d1f -- <that path>`). So the promise changed
-      shape by the maintainer's choice, and the bullet now says so rather than the box
-      staying open on a question that was answered before it was asked. D135 pt 1 stands: no
-      leg re-adds a read-only YAML viewer.
-      Logs and describe are met and then some — a dedicated full-screen logs view with a
-      live grep, wrap, sideways scroll, timestamps and the previous-instance toggle
-      (LOGS-01…04c, M5-01a, D144–D148, D177) and
-      `kubectl describe`-identical output in-process (M3-04, `internal/kube/describe.go`).
-      Nothing here requires a pager: the editor is the user's own, invoked once and returned
-      from, not a pager kubecom shells out to for reading.
-      **Ticked 2026-08-06 (HT-dogfood-0806).** The YAML third rode the same live `$EDITOR`
-      suspend as the Exec/Edit box below, and the human task that carried both,
-      `2026-07-24-edit-live-cluster-dogfood`, came back done: *"editor is working"*, re-run
-      after EDIT-01/D192 fixed the editor resolution that stopped the first attempt.)
-- [x] Core actions in-process: delete, scale, rollout restart, cordon/drain, port-forward (background), view secrets.
-      (M3 exit criteria 2–4, all ticked, all client-go: delete (D115), scale +
-      rollout-restart (D117, kubectl's own `restartedAt` annotation so the two tools are
-      interchangeable), cordon/uncordon (D120), drain with streamed eviction progress
-      (D121), CronJob suspend/resume (D120), port-forwards that run in the background, are
-      listed in a panel and stop cleanly on exit (D122/D123, `forwards.panel`/`stopAll`),
-      and secrets with explicit reveal + per-entry clipboard copy (D113/D114, #89).)
-- [x] Exec shell + `$EDITOR` edit (the only sanctioned TUI-suspending actions).
-      (Exec is done and human-confirmed against a real cluster in a real terminal
-      (2026-07-24, HT-exec-dogfood): in-process SPDY with a `kubectl exec` parity fallback
-      when the binary is present (D125–D128). Edit is built and hermetically covered —
-      temp-file round-trip, no-change detection, identity/conflict guards that refuse rather
-      than clobber (M3-15a/15b, D129/D135). Its **live** `$EDITOR` suspend is the part no fake
-      can show, and it was **maintainer-confirmed 2026-08-06** — *"editor is working"* — on a
-      re-run after EDIT-01/D192 made the editor resolve at startup (the first attempt, on
-      2026-08-01, never reached step 1: no `vi` on the host, which degraded correctly).
-      Ticked by HT-dogfood-0806, closing the M3 Edit exit criterion and **completing M3**. The
-      confirmation is as wide as those words: the flow works. The reject paths — invalid YAML,
-      renamed `metadata.name`, concurrent change — remain covered hermetically (D129), not by
-      this check.)
-- [x] Context/cluster switcher; namespace switcher; filter; sort by column.
-      (All four met: namespace picker (M2-08c) that remembers per-context scope
-      (D163), table filter with `n`/`N` search (D80), any column sortable, stable under
-      live watch deltas, selection following its object by UID (M2-13a/13b, D94/D98, #85) —
-      and the context switcher, complete as a mechanism (connect-then-teardown, watch and
-      menu rebind, per-context namespace/menu/state, M4-03…05, D156/D157/D163) and confirmed
-      live on its happy path (picker + switch + rebind against a second real cluster,
-      2026-08-01). The dogfood's remaining checks (pts 3–8: leak teardown, same-context
-      no-op, unreachable context, per-context memory, timing, pane-restore reading) were
-      **waived by the maintainer 2026-08-09**: "current switching functionality is overall
-      good enough … We'll ship it like this" — so this box ticks on that directive (D256
-      pt 1), the waived checks named here rather than verified.)
-- [x] **Vim-first navigation** (`hjkl`, `gg`/`G`, `/`, `n`/`N`) with arrows/classic keys as an equivalent fallback.
-      (M2 exit criterion 5: `defaultBindings` pairs every nav action with a non-vim
-      fallback — `k`/`up`, `j`/`down`, `h`/`left`, `l`/`right`, `gg`/`home`, `G`/`end`,
-      `ctrl+d`/`pgdn`, `ctrl+u`/`pgup` — and resolution is central, so both families reach
-      every list and table identically (`TestDefaultKeymapValid`, `TestDefaultResolution`,
-      `TestMenuPagingKeysReachTheMenu`). `/` filters and `n`/`N` walk the matches
-      (`TestFilterOpensAndNarrows`, `TestSearchWrapsThroughMatches`), and the `?` overlay
-      shows *both* keys per action (`TestHelpMapFullHelp`).)
-- [x] **Fully configurable keybindings** — every action rebindable via config; zero hard-coded keys in view code.
-      (M2 exit criterion 6: `Config.Keymap()` = `DefaultKeymap().Merge(overrides)`, resolved
-      before the alt-screen so a bad keymap reports and never launches
-      (`TestKeymapResolvesOverride`, `TestKeymapUnknownActionErrors`,
-      `TestKeymapBadTokenErrors`, `TestKeysOverrideAndWarning`). Every raw key token in the
-      tree lives under `internal/tui/keymap`; components take a `keymap.Action`, and the
-      only `tea.KeyPressMsg` consumers are the text-entry surfaces where the key *is* the
-      text (D11). All 16 action namespaces are covered by `TestBindingsCoversRegistry`, and
-      `docs/keybindings.md` is generated from the registry with `make check` failing on
-      drift (M2-01e/D51).)
-- [x] **Cold start is responsive** — UI renders immediately; discovery is async and cached.
-      (D8, and it is structural rather than tuned: `menu.New` opens on a static seed set
-      (`internal/kube/seed.go`, `seedItems()`) so the two panes and the welcome page paint
-      on the first `WindowSizeMsg` with no round-trip (`TestViewRendersWhenSized`);
-      discovery is started from `Init` as a channel-fed pump and merged in place when it
-      arrives (`TestInitStartsDiscovery`, `TestReconcilePreservesSelection`), and a total
-      discovery failure leaves the seed menu navigable (`TestDiscoveryTotalFailureKeepsSeed`
-      — degrade, don't blank). Cached on disk per cluster host with kubectl's own 6 h TTL
-      (`internal/kube/cache.go`, `TestComputeDiscoverCacheDirPerHost`,
-      `TestNewCachedDiscoveryImplementsInterface`, `TestClientsInvalidate`).)
-- [x] No `kubectl` binary required for anything except the exec fallback.
-      (D2, and checkable by grep rather than by claim: the only `os/exec` uses in the whole
-      tree are `internal/tui/edit.go` (the `$EDITOR` the next-but-one bullet sanctions) and
-      `internal/tui/exec.go`'s *optional* `kubectl exec` parity path, which is used only
-      when the binary is on PATH and otherwise falls back to in-process SPDY
-      (`TestKubectlExecProcAbsent`, `TestExecRoutesToKubectlWhenPresent`, D128). Every other
-      capability the 2020 build shelled out for is client-go now — logs, describe, YAML,
-      exec, port-forward, apply, drain, secrets (`internal/kube/`). Closes #68.)
-- [x] Plain-YAML config with one-shot migration from the old `~/.kubecom.yaml`.
-      **(Ticked on the generated fixture, not on a real accumulated file — D231.)**
-      (The config half is met: plain YAML via `sigs.k8s.io/yaml`, config/state/menus split
-      across XDG dirs (D20/D83/D91). The migration half is built and one-shot (M2-12a/12b,
-      D92/D93) and degrades rather than blocks on a malformed legacy file. Its report used to
-      **state something false** — that themes were dropped because v1 has no runtime theming,
-      untrue since M4-11/12 — and **M5-04 ✅ 2026-07-30 (D179)** fixed it in the only way that
-      is honest: the legacy `currentTheme` is now *carried onto* `theme:` when v1 still ships
-      that palette (`solarized` → `solarized-dark` by an enumerated rename), an unported name
-      degrades to the default with the note naming the themes that exist, and the README's
-      matching claim went with it. **M5-05 ✅ 2026-07-30 (D180)** then ran the whole launcher
-      path over a `~/.kubecom.yaml` *generated by the 2020 writer itself* (protojson→YAML over
-      a `pb.Config`), pinned key-for-field to a verbatim copy of `master:pb/config.proto` — and
-      caught a hand-typed fixture that had the `rgb` wire format wrong. It stayed unticked
-      waiting for a human to run it over a file they actually accumulated — and on 2026-08-06
-      that human task came back **done and negative**: *"I can't test, I don't have old config.
-      Rely on tests."* No such file survives, so the evidence this box was holding out for is
-      unobtainable rather than merely unproduced, and **HT-dogfood-0806 ticks it on the fixture
-      and records that it did (D231)** — the disposition M5-05 wrote into the task in advance,
-      not one invented after the answer came back. The gap that remains is exactly one thing
-      and D231 names it: an *unparseable* legacy config degrades silently to no migration
-      (D92), and only a file nobody has could show that path being hit in the wild.)
-- [ ] Linux + macOS release artifacts via goreleaser + GitHub Actions; tests green.
-      (Tests green is continuous — `make check` (build + test + vet + lint) gates every leg
-      and CI runs it (D17). The artifacts half has **not happened**: `.goreleaser.yml`
-      builds linux/darwin × amd64/arm64 but sets only `Version` in its ldflags (M5-02), and
-      `.github/workflows/` holds only `ci.yml`, so nothing has ever run it (M5-03). Ticked
-      when a real tag has produced real artifacts — a human act by D173, so M5-10.)
-- [ ] Every open GH issue in scope is resolved or explicitly deferred with a reason.
-      (10 of the 11 issues in the REWRITE_PLAN table are resolved in code with named
-      evidence: #68 (in-process client-go), #76 (discovery + dynamic Table path), #87
-      (fault-isolating discovery — one bad group cannot break the load,
-      `TestDiscoverResourcesGroupFaultIsolation`, and since M1-INT-a/D186 also against a real
-      apiserver with a real broken aggregated API, `TestEnvtestBrokenAPIGroupIsIsolated`;
-      that run found the isolation sound but the *reporting* of which group failed silently
-      lost — DISC-01, which does not reopen #87), #86 (no panics, degrade), #88 (new
-      toolchain), #84 (logs for pod-owning kinds), #83 (workload actions), #89 (secret
-      viewer), #80 (context switcher — mechanism), #85 (column sort). **#28** (CD to
-      distributors) is the outstanding one: M5-06/07/08. **M5-10 checked the tracker**
-      (2026-07-30, via the GitHub API rather than `gh`): 13 issues are open, and every one is
-      accounted for — the 11 above, the rewrite announcement #90, and **#8** ("UI: hotkeys
-      configurability"), which is resolved by the fully-rebindable keymap (M2-01, D11) but was
-      **missing from the REWRITE_PLAN table**, so the plan's inventory undercounted the scope
-      by one. None are closed, and M5-10 deliberately did not close them: an issue is resolved
-      for the person who filed it when a *release* carries the fix, and no release exists yet
-      (D185 pt 3). Closing them is step 3 of human task `2026-07-30-first-release-tag`, which
-      names all thirteen.)
+Two administrative items remain, both tracked on the
+[board](tasks/board.md): rewording the delivery criteria to the
+channel/launcher model now that goreleaser is retired (ENGRAM-03), and closing
+the resolved GitHub issues now that a release carries the fixes.
+
+## What's next
+
+The forward plan — remaining packaging, docs and UX work — is in
+[`PLAN.md`](PLAN.md) and the live [`tasks/board.md`](tasks/board.md).
 
 ## Non-goals
 
 - **Native Windows support** — dropped. Windows users run kubecom under **WSL2**.
 - **Cloning k9s.** k9s is feature-dense but its UX is deliberately *not* our
   model; kubecom stays simpler and more approachable.
-- Cluster mutation beyond the curated action set (no arbitrary `apply`, no manifests authoring).
+- Cluster mutation beyond the curated action set (no arbitrary `apply`, no
+  manifests authoring).
 - Multi-cluster dashboards / server mode. Single-context, local, zero-deploy.
 
 ## Principles
@@ -224,12 +63,12 @@ the code; the original text is preserved in that bullet's annotation._
    [`knowledge/keybindings.md`](knowledge/keybindings.md).
 7. **Zero hard-coded keys.** All input flows through a configurable action
    registry; no view matches a raw key. Every binding is rebindable via config.
-8. **Keep it runnable; dogfood it.** Once the binary launches (M2-RUN), it stays
-   launchable every leg. A human periodically installs `kubecom` and runs it
-   against a real cluster; each leg must incrementally improve — never regress —
-   that real-cluster experience, and keep the README's install/usage current
-   (D68). Fake-tested parts are not "done" until they work in the running binary.
+8. **Keep it runnable; dogfood it.** The binary stays launchable every leg. A
+   human periodically installs `kubecom` and runs it against a real cluster; each
+   leg must incrementally improve — never regress — that real-cluster experience,
+   and keep the README's install/usage current (D68). Fake-tested parts are not
+   "done" until they work in the running binary.
 
-See [`REWRITE_PLAN.md`](REWRITE_PLAN.md) for the full architecture and
-rationale, and [`knowledge/decisions.md`](knowledge/decisions.md) for the locked
-decisions.
+See [`PLAN.md`](PLAN.md) for the architecture, the release/update model and the
+forward roadmap, and [`knowledge/decisions.md`](knowledge/decisions.md) for the
+locked decisions.
