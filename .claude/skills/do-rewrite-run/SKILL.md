@@ -14,7 +14,7 @@ subagent context instead (D21).
 ## 0. Prime the environment (fresh cloud checkouts start on `v0`)
 
 - `git fetch origin main && git checkout main && git pull --rebase origin main`.
-  All process files (.agents/AGENTS.md, skills, vault) live only on `main`.
+  All process files (AGENTS.md, skills, vault) live only on `main`.
 - Set the repo-local git identity — cloud checkouts default to a Claude
   identity, but commits must be authored as the repository's agent identity:
   `git config user.name "Kubecom Agent" && git config user.email "kubecom@neuroplast.io"`.
@@ -44,7 +44,7 @@ subagent context instead (D21).
    collide) with **`model: "opus"`** — the routine session runs a cheaper model
    for orchestration, but legs always execute on Opus — and this prompt:
 
-   > Read `.claude/skills/do-rewrite-leg/SKILL.md` and `.agents/AGENTS.md` in the repo
+   > Read `.claude/skills/do-rewrite-leg/SKILL.md` and `AGENTS.md` in the repo
    > and follow the skill exactly: one leg, then stop. (Read the file by path —
    > do not rely on `/do-rewrite-leg` being a registered slash command; the
    > session may have initialized before `main` was checked out.) End your final

@@ -9,7 +9,7 @@ You are operating **autonomously** on the kubecom rewrite. There is no human to
 ask. Make all decisions yourself, record them, and leave the project in a clean,
 reviewable state. Do **exactly one leg**, then stop.
 
-Read [`.agents/AGENTS.md`](../../../.agents/AGENTS.md) and [`vault/README.md`](../../../vault/README.md)
+Read [`/AGENTS.md`](../../../AGENTS.md) and [`vault/README.md`](../../../vault/README.md)
 if not already in context. Follow these steps in order.
 
 ## 1. Orient

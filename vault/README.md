@@ -24,7 +24,7 @@ control, discoverable without external context.
 
 | Path | Purpose |
 |------|---------|
-| [`../.agents/AGENTS.md`](../.agents/AGENTS.md) | Agent operating guide: autonomous model, the leg loop, hard rules |
+| [`../AGENTS.md`](../AGENTS.md) | Agent operating guide: autonomous model, the leg loop, hard rules |
 | [`goals.md`](goals.md) | Vision, definition of done, non-goals, principles |
 | [`PLAN.md`](PLAN.md) | Current architecture, the release/update model, and the forward roadmap |
 | [`tasks/`](tasks/) | Task board + workflow conventions |
@@ -38,7 +38,7 @@ small **leg** at a time via the [`/do-rewrite-leg`](../.claude/skills/do-rewrite
 skill, pushing directly to `main`. That model continues for the remaining work. A
 claim on the board is committed and pushed **before** implementation so it acts as
 a lock (D16). A human reviews periodically via this vault and the journal. See
-[`../.agents/AGENTS.md`](../.agents/AGENTS.md) for the full operating model.
+[`../AGENTS.md`](../AGENTS.md) for the full operating model.
 
 Milestones (M0–M5) were retired in the 2026-10-07 cleanup: the rewrite is
 complete, and finished work is recorded in [`knowledge/decisions.md`](knowledge/decisions.md),
