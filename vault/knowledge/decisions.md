@@ -1764,10 +1764,10 @@ stay.
    single quotes, so nothing is escaped.
 2. **A value runs an argument verb with it**: `bind "g p"
    "resources.switch" "pods"` switches straight to pods, while no value
-   opens the palette stage as the key does today. Only the argument verbs
-   (`ns.switch`, `resources.switch`, `ctx.switch`, `theme.switch`,
-   `actions.menu`) take one, and a value on any other action is a load
-   error.
+   opens the palette stage as the key does today. Only the palette's
+   argument verbs (`ns.switch`, `resources.switch`, `ctx.switch`,
+   `theme.switch`, `menu.pin`, `actions.menu`) take one, and a value on
+   any other action is a load error.
 3. **The context is the path of what holds the keyboard**, outermost first.
    Each node is a boolean, and its attributes are qualified names under it.
    An attribute of a node that is not on the path is absent, and a misspelt
@@ -1775,17 +1775,23 @@ stay.
    - `cluster` (`context`, `namespace`; "" = all), on the path while a
      cluster is connected;
    - `menu`, or `table` (`resource`, `group`, `kind`, `namespaced`,
-     `drilled`, `filtered`, `unhealthy`), whichever pane holds focus;
+     `drilled`, `filtered`, `unhealthy_only`), whichever pane holds focus;
    - `sort`, the table's column-header mode;
-   - at most one view over the body: `logs` (`follow`, `wrap`,
+   - at most one view opened over the pane: `logs` (`follow`, `wrap`,
      `timestamps`, `previous`, `selecting`), `viewer` (`content`:
      `describe`|`events`|`secret`), `search` (`all_kinds`,
-     `all_namespaces`), `unhealthy`, `forwards`, `help`;
-   - at most one overlay: `picker` (`id`: `palette`|`containers`|`ports`|
-     `relations`; `stage`, the palette's committed verb), `prompt`,
-     `confirm`;
-   - `field`, a text field holding the keyboard (the table filter, the logs
-     grep, a picker's query, the search query, a prompt).
+     `all_namespaces`), `unhealthy`;
+   - at most one overlay: `forwards`, `help`, `picker` (`id`:
+     `palette`|`containers`|`ports`|`relations`; `stage`, the palette's
+     committed verb), `prompt`, `confirm`;
+   - `field`, a text field holding the keyboard (the menu or table filter,
+     the logs grep, a picker's query, the search query, a prompt).
+   **`focus` is the innermost node's name** (kubecom's addition): `context
+   "table"` holds anywhere above the table, so a confirm over it still sees
+   it, while `context "focus == 'table'"` holds only while the table itself
+   has the keys. That is how `enter` opens the actions menu on a row and
+   nowhere else. Spelling out every overlay with `!` would break each time
+   one is added.
    `context "cluster.context.startsWith('prod-')" { unbind "D" }` is the
    kind of rule this is for.
 4. **Precedence (plexos's):** the deepest context wins, then the layer

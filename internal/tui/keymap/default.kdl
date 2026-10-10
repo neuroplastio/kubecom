@@ -1,0 +1,121 @@
+// kubecom's default keymap: the default layer under your config.kdl's `keymap`
+// (D303). `kubecom keys default` prints this file. To start from nothing, write
+// `base "none"` in yours.
+//
+// Vim keys first, fallbacks second (D10). A binding outside any context holds
+// everywhere; a deeper context beats a shallower one, and while a text field holds
+// the keyboard a key that types text goes to the field (D303 pt 5) — so a plain
+// letter here never breaks typing into a filter.
+version 1
+
+keymap {
+    // Navigation (D10). `g g` is vim's top, `home` its one-key fallback.
+    bind "k" "nav.up"
+    bind "up" "nav.up"
+    bind "j" "nav.down"
+    bind "down" "nav.down"
+    bind "h" "nav.left"
+    bind "left" "nav.left"
+    bind "l" "nav.right"
+    bind "right" "nav.right"
+    bind "enter" "nav.drillIn"
+    bind "esc" "nav.back"
+    bind "g g" "nav.top"
+    bind "home" "nav.top"
+    bind "G" "nav.bottom"
+    bind "end" "nav.bottom"
+    bind "ctrl+d" "nav.halfPageDown"
+    bind "pgdn" "nav.halfPageDown"
+    bind "ctrl+u" "nav.halfPageUp"
+    bind "pgup" "nav.halfPageUp"
+    // A full page takes vim's space, since ctrl+f is search.cluster; ctrl+b keeps
+    // its vim meaning, so the pair reads as it always did (D269).
+    bind "space" "nav.pageDown"
+    bind "ctrl+b" "nav.pageUp"
+
+    bind "/" "app.filter"
+    bind "n" "app.searchNext"
+    // Previous match is vim's backward-occurrence `#`, the mirror of `*` (D269).
+    bind "#" "app.searchPrev"
+    // H narrows the table to what is broken; U sweeps every kind for it (D276).
+    bind "H" "app.unhealthy"
+    bind "U" "app.unhealthyScan"
+    bind "?" "app.help"
+    bind "q" "app.quit"
+    bind "ctrl+c" "app.quit"
+    // `:` is the palette, where every verb is one typed word away (D194).
+    bind ":" "app.palette"
+
+    // The capital-letter switchers: Namespace, Resource, Context, Theme (D269).
+    bind "N" "ns.switch"
+    bind "R" "resources.switch"
+    bind "C" "ctx.switch"
+    bind "T" "theme.switch"
+    bind "M" "mouse.toggle"
+    // app.update has no key: updating fetches from the network, so it is typed
+    // (`:update`), never pressed by accident.
+
+    // S enters the column-header sort mode; x clears the sort (D270).
+    bind "S" "sort.column"
+    bind "x" "sort.clear"
+    bind "m" "menu.toggle"
+
+    // Row actions. enter on a row opens them all (actions.menu, below); these are
+    // the direct keys for the most used.
+    bind "d" "res.describe"
+    bind "E" "res.events"
+    bind "L" "res.logs"
+    bind "e" "res.edit"
+    bind "D" "res.delete"
+    // P for the owner's Pods (D165).
+    bind "P" "res.children"
+    // `g r`, vim's go-to-references: what is this object related to (D287).
+    bind "g r" "res.relations"
+
+    // The logs view's toggles. ctrl+r and ctrl+p are chords so they work while the
+    // grep field is open; o (the other, older instance) is the plain-letter twin of
+    // ctrl+p (D177).
+    bind "f" "logs.follow"
+    bind "ctrl+r" "logs.regex"
+    bind "w" "logs.wrap"
+    bind "t" "logs.timestamps"
+    bind "o" "logs.previous"
+    bind "ctrl+p" "logs.previous"
+    // Visual selection and yank, vim's own keys (D269).
+    bind "v" "logs.select"
+    bind "V" "logs.select"
+    bind "y" "logs.yank"
+
+    bind "r" "secret.reveal"
+    bind "c" "secret.copy"
+    bind "F" "forwards.panel"
+    bind "X" "forwards.stopAll"
+    // The port picker's local side: p for a local port, 0 for a free one (D139).
+    bind "p" "forwards.localPort"
+    bind "0" "forwards.freeLocal"
+
+    // Search takes ctrl+f, find, and its widens are chords too, because the
+    // search query field is always open (D140 pt 1): ctrl+a all kinds, ctrl+w
+    // cluster-wide.
+    bind "ctrl+f" "search.cluster"
+    bind "ctrl+a" "search.allKinds"
+    bind "ctrl+w" "search.allNamespaces"
+
+    // `*` stars a kind into this context's menu, or out of it (D201).
+    bind "*" "menu.pin"
+
+    // enter on a row of the table — the table itself holding the keys, nothing
+    // over it — opens the actions menu (STORY-06c); everywhere else it is
+    // nav.drillIn.
+    context "focus == 'table'" {
+        bind "enter" "actions.menu"
+    }
+
+    // The confirm dialog's answers.
+    context "confirm" {
+        bind "y" "confirm.accept"
+        bind "enter" "confirm.accept"
+        bind "n" "confirm.decline"
+        bind "esc" "confirm.decline"
+    }
+}

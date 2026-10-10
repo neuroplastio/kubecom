@@ -3,7 +3,7 @@
 Live board for kubecom. See [`README.md`](README.md) for workflow and the item
 template. Status: `todo` · `in-progress` · `blocked` · `done`.
 
-_Last updated: 2026-10-10 — KDL config and a contextual keymap planned (D302/D303): KEYS-01, KDL-01, KEYS-02 first._
+_Last updated: 2026-10-10 — KEYS-01 landed (the context keymap engine and default.kdl, unused yet); KDL-01 and KEYS-02 next, pushed together._
 
 ## In Progress
 
@@ -16,11 +16,6 @@ _(none)_
 ### Config & keys in KDL (D302/D303)
 
 _plexos's model: an authored `config.kdl` kubecom never writes, an overlay it does, and a `keymap` of `bind`/`unbind`/`group`/`context "<cel>"` over a focus path. KEYS-01 is additive; KDL-01 and KEYS-02 break `config.yaml` and land together._
-
-- [ ] **KEYS-01** The context keymap engine and `default.kdl` — `bind`/`unbind`/`group`/`context`/`leader`/`base` parsed from KDL, CEL contexts over kubecom's path, plexos's precedence and the field rule (D303 pt 5); `default.kdl` holds today's bindings in their contexts, and a golden of every surface × key from the old map proves they match
-      status: in-progress | owner: kubecom | added: 2026-10-10
-      notes: Additive: nothing calls it yet. Ported from plexos `cmd/plx/internal/keybind` (parse, context, match), over kubecom's canonical chords instead of `tea.Key`.
-      → knowledge: decisions.md D303
 
 - [ ] **KDL-01** `internal/config` reads `config.kdl` + `config.overlay.kdl` (plexos's grammar), with `menu` documents in place of `menus/*.yaml` and state in `state/<context>.kdl`; the theme picker writes the overlay; YAML is gone, with a start-up notice naming an orphaned `config.yaml`; the 2020 migration writes the overlay; README and docs
       status: todo | owner: — | added: 2026-10-10
