@@ -32,7 +32,7 @@ _plexos's model: an authored `config.kdl` kubecom never writes, an overlay it do
       → knowledge: decisions.md D303 pt 2
 
 - [ ] **KEYS-04** Keys that only mean something in one surface move into that surface's context, and the letters that frees are offered back (`p`, `s`, `a`, …) — a remap proposal for the maintainer, not a silent change
-      status: todo | owner: — | added: 2026-10-10
+      status: in-progress | owner: kubecom | added: 2026-10-10
       → knowledge: decisions.md D303 pt 6
 
 ### UX, docs & polish
