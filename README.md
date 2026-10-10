@@ -14,6 +14,7 @@ over SSH, in real time — one static binary, nothing to deploy in the cluster, 
 [![Go](https://img.shields.io/badge/go-1.24-00ADD8.svg)](go.mod)
 [![Platforms](https://img.shields.io/badge/platforms-linux%20%7C%20macOS-lightgrey.svg)](#requirements)
 
+<!-- docs:screencast src=docs/screencast.cast -->
 ![kubecom — browse, filter, logs, describe](docs/screencast.gif)
 
 </div>
