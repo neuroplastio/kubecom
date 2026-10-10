@@ -3,7 +3,7 @@
 Live board for kubecom. See [`README.md`](README.md) for workflow and the item
 template. Status: `todo` · `in-progress` · `blocked` · `done`.
 
-_Last updated: 2026-10-07 — vault cleanup (D300): milestones retired, completed items dropped, the plan doc rewritten; the open work below is all that remains. The rewrite's finished work lives in [`../knowledge/decisions.md`](../knowledge/decisions.md), the journal and git._
+_Last updated: 2026-10-10 — KDL config and a contextual keymap planned (D302/D303): KEYS-01, KDL-01, KEYS-02 first._
 
 ## In Progress
 
@@ -12,6 +12,33 @@ _Last updated: 2026-10-07 — vault cleanup (D300): milestones retired, complete
 _(none)_
 
 ## Backlog
+
+### Config & keys in KDL (D302/D303)
+
+_plexos's model: an authored `config.kdl` kubecom never writes, an overlay it does, and a `keymap` of `bind`/`unbind`/`group`/`context "<cel>"` over a focus path. KEYS-01 is additive; KDL-01 and KEYS-02 break `config.yaml` and land together._
+
+- [ ] **KEYS-01** The context keymap engine and `default.kdl` — `bind`/`unbind`/`group`/`context`/`leader`/`base` parsed from KDL, CEL contexts over kubecom's path, plexos's precedence and the field rule (D303 pt 5); `default.kdl` holds today's bindings in their contexts, and a golden of every surface × key from the old map proves they match
+      status: in-progress | owner: kubecom | added: 2026-10-10
+      notes: Additive: nothing calls it yet. Ported from plexos `cmd/plx/internal/keybind` (parse, context, match), over kubecom's canonical chords instead of `tea.Key`.
+      → knowledge: decisions.md D303
+
+- [ ] **KDL-01** `internal/config` reads `config.kdl` + `config.overlay.kdl` (plexos's grammar), with `menu` documents in place of `menus/*.yaml` and state in `state/<context>.kdl`; the theme picker writes the overlay; YAML is gone, with a start-up notice naming an orphaned `config.yaml`; the 2020 migration writes the overlay; README and docs
+      status: todo | owner: — | added: 2026-10-10
+      notes: Breaks the dev channel's `config.yaml`, so it is pushed together with KEYS-02, after telling the maintainer.
+      → knowledge: decisions.md D302
+
+- [ ] **KEYS-02** The cutover — the Model builds its path; keys resolve through the context keymap (the sequencer takes the path); `ConfirmAction`, `TableAction`, the flat map and `Merge` go; the user layer is `config.kdl`'s and the overlay's `keymap`; hints, `?` and `docs/keybindings.md` read the live path; `kubecom keys` lists, `keys default`, `keys check`
+      status: todo | owner: — | added: 2026-10-10
+      notes: The keylog records the path's innermost node in place of the key mode. The story analyser's `Resolve` takes a path.
+      → knowledge: decisions.md D303
+
+- [ ] **KEYS-03** A bind's value runs the argument verb directly (`bind "g p" "resources.switch" "pods"`), with no palette stage
+      status: todo | owner: — | added: 2026-10-10
+      → knowledge: decisions.md D303 pt 2
+
+- [ ] **KEYS-04** Keys that only mean something in one surface move into that surface's context, and the letters that frees are offered back (`p`, `s`, `a`, …) — a remap proposal for the maintainer, not a silent change
+      status: todo | owner: — | added: 2026-10-10
+      → knowledge: decisions.md D303 pt 6
 
 ### UX, docs & polish
 

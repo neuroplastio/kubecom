@@ -1703,3 +1703,118 @@ distribution (infra `sites`, dccb517).
    neuroplast.io now reads the cast and the GIF from `main` too: D298 pt 4's
    last external `v1` reference is gone.
 **Refs:** amends D296 (where the script lives); closes D298 pt 4.
+
+### D302 — Config is KDL: an authored `config.kdl` kubecom never writes, an overlay it does, and KDL state (2026-10-10, KDL-01)
+
+The maintainer: *"See how plexos implemented configuration files using .kdl —
+I need kubecom to move to .kdl."* plexos's model (its D75/D83) is taken
+whole, so one person's two tools read one grammar.
+
+1. **Three kinds of file**, all in the D20 directory
+   (`os.UserConfigDir()/kubecom`), all starting `version 1` (a newer
+   version is refused, naming the file):
+   - `config.kdl` — the person's. kubecom reads it and **never writes it**,
+     so its comments, order and layout stay theirs.
+   - `config.overlay.kdl` — kubecom's. Every write goes here (the theme
+     picker today; the palette's key bindings later), merged on top of
+     `config.kdl` key by key. A write changes one node and keeps the rest.
+   - `state/<context>.kdl` — per-context runtime state (D90 stands: kubecom
+     rewrites it freely).
+2. **The grammar is plexos's:** a key is a dotted path through nodes
+   (`theme "monokai"`); a value is a node with one argument; a group has
+   children; a list is `-` items carrying properties. Two **documents** are
+   handed to their reader whole: `keymap { … }` (D303), which the overlay
+   may hold too, and `menu ["<context>"] { resource "<plural>" group=…
+   version=… kind=… namespaced=… section=… title=… }`, which replaces
+   `menus/<context>.yaml`. A `menu` without a context applies to every
+   context; a context's own entries come after those.
+3. **No YAML.** `config.yaml`, `menus/*.yaml` and `state/*.yaml` are no
+   longer read. When `config.yaml` or `menus/` is there and `config.kdl` is
+   not, the start-up notice names them and says what replaced them. There
+   is no converter: the maintainer is the only user, and the old `keys:`
+   overrides do not map one-for-one onto D303's bindings.
+4. **The 2020 migration (D6) stays, retargeted:** a carried-over theme is
+   written to the overlay, and it runs when neither `config.kdl` nor the
+   overlay exists.
+5. **Library:** `github.com/calico32/kdl-go` v0.16.0, parsed strictly as KDL
+   v2 — plexos's choice (its D83), for its line/column errors and a
+   formatter that keeps comments. Its API is 0.x; `internal/config` is its
+   only importer besides the keymap's parser.
+**Refs:** supersedes the PLAN's "plain YAML" locked decision and D90's file
+format (not its split); amends D6's target.
+
+### D303 — Key bindings are a context-bound keymap: CEL contexts over a focus path, layered precedence (2026-10-10, KEYS-01)
+
+The maintainer: *"support contextual key bindings, similar to plexos."*
+plexos's D119 model, with kubecom's own path. It replaces the flat browse
+map and its two side tables (`ConfirmAction`, `TableAction`). The `Action`
+registry and the D11 rule that views switch on actions, never on keys,
+stay.
+
+1. **A `keymap` document**, in three layers: `default.kdl` (embedded,
+   hand-written; kubecom's registry is fixed, so there is nothing to
+   generate it from), then `config.kdl`'s, then the overlay's (both the
+   user layer, in that order). Nodes: `bind "<keys>" "<action>" [value]
+   [label=]`, `unbind "<keys>"`, `group "<keys>" "+label"`, `context
+   "<cel>" { … }` (nested blocks are joined with `&&`), `leader "<key>"`
+   (none by default; `<leader>` with no leader named is a load error),
+   `base "kubecom"|"none"`. Keys are written as plexos writes them,
+   separated by spaces: `g g`, `ctrl+d`, `H` (= `shift+h`), `pgdn`,
+   `space`. The old concatenated `gg` is not read. CEL strings take
+   single quotes, so nothing is escaped.
+2. **A value runs an argument verb with it**: `bind "g p"
+   "resources.switch" "pods"` switches straight to pods, while no value
+   opens the palette stage as the key does today. Only the argument verbs
+   (`ns.switch`, `resources.switch`, `ctx.switch`, `theme.switch`,
+   `actions.menu`) take one, and a value on any other action is a load
+   error.
+3. **The context is the path of what holds the keyboard**, outermost first.
+   Each node is a boolean, and its attributes are qualified names under it.
+   An attribute of a node that is not on the path is absent, and a misspelt
+   one is a load error:
+   - `cluster` (`context`, `namespace`; "" = all), on the path while a
+     cluster is connected;
+   - `menu`, or `table` (`resource`, `group`, `kind`, `namespaced`,
+     `drilled`, `filtered`, `unhealthy`), whichever pane holds focus;
+   - `sort`, the table's column-header mode;
+   - at most one view over the body: `logs` (`follow`, `wrap`,
+     `timestamps`, `previous`, `selecting`), `viewer` (`content`:
+     `describe`|`events`|`secret`), `search` (`all_kinds`,
+     `all_namespaces`), `unhealthy`, `forwards`, `help`;
+   - at most one overlay: `picker` (`id`: `palette`|`containers`|`ports`|
+     `relations`; `stage`, the palette's committed verb), `prompt`,
+     `confirm`;
+   - `field`, a text field holding the keyboard (the table filter, the logs
+     grep, a picker's query, the search query, a prompt).
+   `context "cluster.context.startsWith('prod-')" { unbind "D" }` is the
+   kind of rule this is for.
+4. **Precedence (plexos's):** the deepest context wins, then the layer
+   (user over default), then the later line. An exact binding that is also
+   a prefix of a longer one waits only for longer bindings at least as deep
+   as itself, and runs when the sequence times out.
+5. **Fields keep their text** (kubecom's own rule; D140 pt 1 becomes the
+   keymap's): with `field` on the path, a key that types text goes to the
+   field unless a binding at least as deep as `field` takes it. A user's
+   global `bind "x" …` can never break typing `x` into a filter, and the
+   `key.Text == ""` checks in the routes go.
+6. **The defaults first reproduce today's keys exactly.** A golden of every
+   surface × key, written against the old map before the swap, is the proof.
+   Moving a key now that a context can free its letter is a later UX
+   decision, not part of the port.
+7. **Hints, the `?` overlay and `docs/keybindings.md` read the live path.**
+   The curated hint sets still choose *which* actions to show, and the keys
+   come from the bindings that win there. `kubecom keys` lists bindings with
+   their context and `file:line`; `kubecom keys default` prints
+   `default.kdl`, and `kubecom keys check` validates the user layer.
+8. **Ported, not imported.** plexos is private and kubecom is public, so
+   kubecom carries its own copy of the engine (parse, CEL context, match).
+   A shared public module is the later home if a third tool wants it.
+   Matching is on kubecom's canonical chords, not on `tea.Key`: the TUI
+   adapts its keys, and an A2UI/HOTTY front end will build its path from its
+   own focus tree and feed the same keymap.
+**The cost of CEL**, measured by plexos (its D119): +6.8 MB stripped and
+~1 ms more at start; matching is microseconds, and a key no binding starts
+with is one map lookup.
+**Refs:** supersedes the flat-context half of D11's mechanism (not its rule)
+and D132's side contexts; restates D140 pt 1 as pt 5; D10's vim-first
+defaults stand.

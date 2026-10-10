@@ -18,7 +18,8 @@ git. It is not restated here.
 | TUI framework | **Bubble Tea v2** + Bubbles + Lipgloss (Elm architecture, single update loop) |
 | K8s access | **In-process client-go**; shell out **only** where real interactivity requires it (exec shell, `$EDITOR`) |
 | Resource listing | **Server-side Table** printing via the dynamic client (`Accept: as=Table`) — kubectl-identical columns for any resource incl. CRDs |
-| Config | **Plain YAML**, split across XDG dirs; one-shot migration from the old `~/.kubecom.yaml` |
+| Config | **KDL** (D302): an authored `config.kdl` kubecom never writes, a `config.overlay.kdl` it does, `state/<context>.kdl`; one-shot migration from the old `~/.kubecom.yaml` |
+| Keys | **A context-bound keymap** (D303): `bind`/`unbind`/`context "<cel>"` over the focus path, plexos's precedence |
 | Platforms | **Linux + macOS**; Windows via WSL2 |
 | Release | **engram channels** (`pkg.neuroplast.io/kubecom/{dev,stable}`) + a thin **launcher**; goreleaser retired (D292) |
 | Version identity | CalVer — `YY.MM.DD` stable, `YY.MM.DD-dev.<sha7>` dev; `Commit` is the identity |
@@ -36,7 +37,7 @@ kubecom/
       keymap/                  # action registry + bindings; no raw keys in view code
       styles/                  # lipgloss palettes: default, monokai, solarized-dark
       help/ elide/ safetext/
-    config/                    # YAML struct + load/save + legacy migration
+    config/                    # KDL config + overlay + state + legacy migration
     channel/                   # engram channel client; pinned server + release key
     update/                    # `kubecom update`: fetch, verify, install
     keylog/                    # --keylog recorder + analyzer
@@ -77,6 +78,8 @@ docs and UX polish; the live list is [`tasks/board.md`](tasks/board.md).
   (`HOMEBREW_TAP_TOKEN`); retire the 2020 `kube-commander` from the AUR.
 - **UX polish.** STORY-06i-3 (reverse-selector relations), TAPE-01 (re-cut the
   screencast), BOX-04 (browse body's two-column gap).
+- **Config & keys.** KDL config and a contextual keymap (D302/D303): KEYS-01,
+  KDL-01, KEYS-02, then KEYS-03/04.
 - **Feedback.** The open AGE-sort bug in [`feedback/`](feedback/).
 - **Housekeeping.** Close the resolved GitHub issues (#8, #28, #68, #76, #80, #83,
   #84, #85, #86, #87, #89, #90) now that a release carries the fixes.
