@@ -22,10 +22,11 @@ the launcher model (board ENGRAM-01…03); until then, prefer a channel build or
 Installs into your own home, with no package manager:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/neuroplastio/kubecom/main/install.sh | sh
+curl -fsSL https://kubecom.neuroplast.io/install.sh | sh
 ```
 
-It verifies the release's signed manifest against the release key pinned in the
+The script is served by kubecom's website, kubecom.neuroplast.io. It
+verifies the release's signed manifest against the release key pinned in the
 script, installs the launcher at `~/.local/bin/kubecom`, and seeds a complete
 build in `~/.local/kubecom` so the first run needs no network. `KUBECOM_CHANNEL`,
 `KUBECOM_BINDIR`, `KUBECOM_COMMIT` and `KUBECOM_FORCE` are read from the

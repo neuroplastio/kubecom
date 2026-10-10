@@ -1676,3 +1676,30 @@ The maintainer asked for a fresh start: "drop completed items, rewrite plan doc,
    (D291 stands).
 6. **The branch model says `v0`**, reflecting the 2026-10-07 rename of `master`.
 **Refs:** extends D291 to the milestones and the plan; supersedes `REWRITE_PLAN.md`.
+
+### D301 — kubecom.neuroplast.io serves the installer; the repository's install.sh forwards to it (2026-10-10, REL-12)
+
+The maintainer asked for kubecom's website ("kubecom.neuroplast.io website,
+xterm-driven, simple layout, hotty vt player with a kubecom recording") and
+for the install script to be hosted there. The site is `kubecom/` of the
+private web monorepo (neuroplastio/web), a folder of neuroplast.io's one
+distribution (infra `sites`, dccb517).
+
+1. **The installer's source moves to the site,** `web/kubecom/web/static/install.sh`,
+   as HOTTY's `run.sh` lives in its site: the one-liner is
+   `curl -fsSL https://kubecom.neuroplast.io/install.sh | sh`, deployed with
+   the site, sent as text so a browser shows it. Its behaviour is D296's,
+   unchanged: the channel's head, the manifest checked against the pinned
+   release key, the launcher plus a seed.
+2. **`install.sh` in this repository forwards.** It fetches the site's
+   installer and runs it with the same environment, so the old
+   raw.githubusercontent.com one-liner keeps working; it holds no logic, so
+   there is one installer.
+3. **The pinned key is now in three places:** `internal/channel`,
+   `release.yml` (`ENGRAM_SIGNERS`) and the site's installer. A key
+   rotation changes all three.
+4. **The site plays the screencast** from `docs/screencast.cast` on `main`
+   (D290), with the player neuroplast.io uses (web `shared/screencast`), and
+   neuroplast.io now reads the cast and the GIF from `main` too: D298 pt 4's
+   last external `v1` reference is gone.
+**Refs:** amends D296 (where the script lives); closes D298 pt 4.

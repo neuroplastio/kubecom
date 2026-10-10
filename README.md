@@ -24,10 +24,11 @@ No root, no package manager — this installs a thin **launcher** and a self-upd
 build into your home:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/neuroplastio/kubecom/main/install.sh | sh
+curl -fsSL https://kubecom.neuroplast.io/install.sh | sh
 ```
 
-The installer checks the release against a pinned signing key, puts `kubecom` in
+The installer, served by [kubecom.neuroplast.io](https://kubecom.neuroplast.io),
+checks the release against a pinned signing key, puts `kubecom` in
 `~/.local/bin`, and seeds a build in `~/.local/kubecom` so the first run needs no
 network. From then on `kubecom update` keeps it current, outside any package
 manager.
