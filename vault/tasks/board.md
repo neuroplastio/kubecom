@@ -18,12 +18,12 @@ _(none)_
 _plexos's model: an authored `config.kdl` kubecom never writes, an overlay it does, and a `keymap` of `bind`/`unbind`/`group`/`context "<cel>"` over a focus path. KEYS-01 is additive; KDL-01 and KEYS-02 break `config.yaml` and land together._
 
 - [ ] **KDL-01** `internal/config` reads `config.kdl` + `config.overlay.kdl` (plexos's grammar), with `menu` documents in place of `menus/*.yaml` and state in `state/<context>.kdl`; the theme picker writes the overlay; YAML is gone, with a start-up notice naming an orphaned `config.yaml`; the 2020 migration writes the overlay; README and docs
-      status: todo | owner: — | added: 2026-10-10
+      status: in-progress | owner: kubecom | added: 2026-10-10
       notes: Breaks the dev channel's `config.yaml`, so it is pushed together with KEYS-02, after telling the maintainer.
       → knowledge: decisions.md D302
 
 - [ ] **KEYS-02** The cutover — the Model builds its path; keys resolve through the context keymap (the sequencer takes the path); `ConfirmAction`, `TableAction`, the flat map and `Merge` go; the user layer is `config.kdl`'s and the overlay's `keymap`; hints, `?` and `docs/keybindings.md` read the live path; `kubecom keys` lists, `keys default`, `keys check`
-      status: todo | owner: — | added: 2026-10-10
+      status: in-progress | owner: kubecom | added: 2026-10-10
       notes: The keylog records the path's innermost node in place of the key mode. The story analyser's `Resolve` takes a path.
       → knowledge: decisions.md D303
 
