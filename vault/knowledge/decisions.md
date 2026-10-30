@@ -1887,3 +1887,25 @@ stands, and myelin's tests replay `oldkeys.golden` too.
 names); Bubble Tea 2.0.2 → 2.0.8, `hottytea`'s floor.
 **Refs:** supersedes D303 pt 8 (ported, not imported) and pt 1's key
 spelling; myelin's reference is its `docs/keymaps.md`.
+
+### D305 — Keymap contexts are the part of CEL cel-lite implements (2026-10-30, MYELIN-02)
+
+gov dispatch: myelin v0.2.0 (its D20) runs a context on **cel-lite**
+(`github.com/neuroplastio/cel-lite`), neuroplastio's subset of CEL in Go's
+standard library alone, instead of cel-go. kubecom requires myelin v0.2.0 and
+myelinkey v0.1.0. D303's model and D304 stand: default.kdl, `oldkeys.golden`
+and keybindings.md resolve byte-identically.
+
+1. **A context says only what cel-lite implements:** comparisons, `&&`, `||`,
+   `!`, `in`, `? :`, `size()`, conversions, and `contains`, `startsWith`,
+   `endsWith` on strings. The macros (`exists`, `all`, `map`, `filter`),
+   `matches()`, timestamps, durations, type values and optional syntax (`.?`)
+   are refused when the keymap loads, with cel-lite's message. A default, a
+   doc or a proposal (KEYS-05's `table.kind == '…'`) stays inside it;
+   configuration.md lists it.
+2. **The errors are cel-lite's:** a context that doesn't parse reads
+   `syntax error: unexpected end of input`, not cel-go's `Syntax error:
+   mismatched input …`.
+**Cost:** −4.45 MB stripped (66.8 → 62.3 MB linux/amd64, `make dist`'s
+flags); six modules leave the graph. protobuf stays, for client-go.
+**Refs:** supersedes D303's cost of CEL (+6.8 MB); myelin's D20.

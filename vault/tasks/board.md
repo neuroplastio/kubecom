@@ -3,7 +3,7 @@
 Live board for kubecom. See [`README.md`](README.md) for workflow and the item
 template. Status: `todo` · `in-progress` · `blocked` · `done`.
 
-_Last updated: 2026-10-11 — KDL-01 through KEYS-04 and MYELIN-01 landed: config in KDL, a context keymap on myelin v0.1.0-next.1 (D302–D304); KEYS-05 (what the freed letters become) waits on the maintainer._
+_Last updated: 2026-10-30 — MYELIN-02 landed: the keymap on myelin v0.2.0, contexts on cel-lite (D305); KEYS-05 (what the freed letters become) waits on the maintainer._
 
 ## In Progress
 

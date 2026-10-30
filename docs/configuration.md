@@ -118,8 +118,13 @@ while it is there, and has attributes you can test:
 
 `focus` is the name of the innermost one: `context "table"` holds even with a
 dialog open over the table, `context "focus == 'table'"` only while the table
-itself has the keys. Expressions are [CEL](https://cel.dev); write strings in single
-quotes (`table.kind == 'Pod'`).
+itself has the keys. Expressions are the part of [CEL](https://cel.dev) that
+[cel-lite](https://github.com/neuroplastio/cel-lite/blob/main/docs/language.md)
+implements: comparisons, `&&`, `||`, `!`, `in`, `? :`, `size()`, and `contains`,
+`startsWith` and `endsWith` on strings; write strings in single quotes
+(`table.kind == 'Pod'`). The macros (`exists`, `all`, `map`, `filter`), `matches()`,
+timestamps, durations and optional syntax (`.?`) aren't in it, and a context that
+uses one is refused when the keymap loads, by name.
 
 **What wins:** the binding whose context reaches deepest; at the same depth yours
 over the default; then the later line. And **a text field keeps its text**: while

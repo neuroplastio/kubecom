@@ -12,8 +12,8 @@ require (
 	github.com/neuroplastio/engram v0.0.0-20261004143221-248ec260b8de
 	github.com/neuroplastio/engram/enlaunch v0.0.0-20261004143221-248ec260b8de
 	github.com/neuroplastio/hotty-go/hottytea v0.0.0-20261010165506-8fff1c2c74dd
-	github.com/neuroplastio/myelin v0.1.0-next.1
-	github.com/neuroplastio/myelin/myelinkey v0.1.0-next.1
+	github.com/neuroplastio/myelin v0.2.0
+	github.com/neuroplastio/myelin/myelinkey v0.1.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/term v0.31.0
 	k8s.io/api v0.31.4
@@ -26,10 +26,7 @@ require (
 )
 
 require (
-	cel.dev/cel-go v0.32.0 // indirect
-	cel.dev/expr v0.25.1 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
-	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-udiff v0.4.0 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
@@ -77,6 +74,7 @@ require (
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
+	github.com/neuroplastio/cel-lite v0.1.1 // indirect
 	github.com/neuroplastio/hotty-go v0.0.0-20261010165506-8fff1c2c74dd // indirect
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
@@ -89,7 +87,6 @@ require (
 	github.com/xlab/treeprint v1.2.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	go.starlark.net v0.0.0-20230525235612-a134d8f9ddca // indirect
-	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/exp v0.0.0-20240823005443-9b4947da3948 // indirect
 	golang.org/x/net v0.39.0 // indirect
 	golang.org/x/oauth2 v0.21.0 // indirect
@@ -97,8 +94,6 @@ require (
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.24.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20240826202546-f6391c0de4c7 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240826202546-f6391c0de4c7 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
