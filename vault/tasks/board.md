@@ -3,7 +3,7 @@
 Live board for kubecom. See [`README.md`](README.md) for workflow and the item
 template. Status: `todo` · `in-progress` · `blocked` · `done`.
 
-_Last updated: 2026-10-30 — MYELIN-02 (myelin v0.2.0, cel-lite contexts, D305) and DEPS-01 (Dependabot #200–#203) landed; KEYS-05 (what the freed letters become) waits on the maintainer._
+_Last updated: 2026-10-30 — MYELIN-02 (myelin v0.2.0, cel-lite contexts, D305), DEPS-01 (Dependabot #200–#203) and GO-01 (Go 1.26.10, D306) landed; KEYS-05 (what the freed letters become) waits on the maintainer._
 
 ## In Progress
 
@@ -88,9 +88,3 @@ _Published to engram channels (`pkg.neuroplast.io/kubecom/{dev,stable}`); a pack
       status: todo | owner: — | added: 2026-10-06
       notes: D68 requires install/usage docs to match the binary in the same change; the launcher + `kubecom update` changed both. `kubecom-bin` is published on the AUR (26.10.06) and verified to launch and install the stable build; the "Homebrew/AUR install paths verified" criterion now means "installed the launcher from", and the AUR half is met (ENGRAM-01 landed 2026-10-06); the Homebrew half is ENGRAM-02.
       → knowledge: decisions.md D292
-
-### Toolchain
-
-- [ ] **LINT-01** golangci-lint v2.5.0 can't lint on Go 1.26, so the pin moves with the Go floor
-      status: todo | owner: — | added: 2026-10-30
-      notes: CI's `GOLANGCI_LINT_VERSION` v2.5.0 is built with go1.25, and on a Go 1.26 toolchain it panics: "file requires newer Go version go1.26 (application built with go1.25)". CI is fine because it lints on go.mod's 1.25.5. A machine whose Go is 1.26 fails `make check` at lint, so run it as `GOTOOLCHAIN=go1.25.5 make check`. After the panic, the shared lint cache gave SA5011 false positives in cmd/kubecom/run_test.go, and a fresh `GOLANGCI_LINT_CACHE` cleared them. The leg that raises the Go floor to 1.26 (x/net ≥ v0.59.0 and stdlib fixes past go1.25.13 need it, DEPS-01) raises this pin to a release built with Go 1.26 too.

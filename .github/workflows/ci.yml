@@ -26,7 +26,7 @@ permissions:
 
 env:
   # Keep in sync with the golangci-lint version agents run locally.
-  GOLANGCI_LINT_VERSION: v2.5.0
+  GOLANGCI_LINT_VERSION: v2.15.0
 
 jobs:
   check:

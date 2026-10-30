@@ -36,7 +36,7 @@ environment. It needs only `curl`, `ssh-keygen`, and `sha256sum` (or `shasum`).
 
 - **Linux or macOS** (Windows via WSL2 — native Windows is a non-goal).
 - A working **kubeconfig** (kubecom uses your current context by default).
-- **Go 1.24+** to install or build from source (not needed for a release archive).
+- **Go 1.26.10+** to install or build from source (not needed for a release archive).
 
 ## From a release archive (recommended today)
 

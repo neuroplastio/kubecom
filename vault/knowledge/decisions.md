@@ -1909,3 +1909,21 @@ and keybindings.md resolve byte-identically.
 **Cost:** −4.45 MB stripped (66.8 → 62.3 MB linux/amd64, `make dist`'s
 flags); six modules leave the graph. protobuf stays, for client-go.
 **Refs:** supersedes D303's cost of CEL (+6.8 MB); myelin's D20.
+
+### D306 — The Go floor is go1.26.10, with Go 1.26's GODEBUG defaults (2026-10-30, GO-01)
+
+The maintainer: "Go 1.26 now". The go directive, which CI and the release
+build read (D23), is 1.26.10, the newest 1.26 patch. go1.25.5 left 29
+reachable stdlib vulnerabilities, 11 of them fixed only in go1.26.9 and
+go1.26.10, and x/net v0.59.0 and later require go 1.26.
+
+1. **Go 1.26's GODEBUG defaults stand.** The 1.26 directive turns on
+   `cryptocustomrand=0`, `httpservecontentmaxranges=200`, `tlssecpmlkem=1`
+   and `urlstrictcolons=1`. None breaks kubecom: its crypto takes
+   crypto/rand, it serves HTTP only in a test, and the new TLS key shares
+   and the stricter URL parse passed against kind. A `//go:debug` or
+   `godebug` line comes only with what breaks without it.
+2. **golangci-lint moves with the floor.** CI's pin is v2.15.0, built with
+   go1.27.0. A pin built with a Go older than the go directive panics on
+   the standard library.
+**Refs:** D23 (the directive is the floor's one source).
