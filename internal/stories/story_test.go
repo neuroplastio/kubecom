@@ -19,7 +19,7 @@ var storySections = []string{"## The situation", "## Your goal", "## When you're
 
 // keyMentions are the ways a story can leak the answer it is supposed to measure.
 //
-// This is the executable half of D268 pt 1 and of CONTRIBUTING.md's one hard rule.
+// This is the executable half of D268 pt 1 and of stories/README.md's one hard rule.
 // A story that says which key to press measures whether the walker can follow
 // instructions; which keys they reach for unprompted *is* the data, so naming one
 // destroys the measurement. The patterns are deliberately narrow — they catch the
@@ -66,7 +66,7 @@ func TestStoriesHaveTheirSections(t *testing.T) {
 		body := read(t, path)
 		for _, section := range storySections {
 			if !strings.Contains(body, section) {
-				t.Errorf("%s has no %q section — see CONTRIBUTING.md for the shape", path, section)
+				t.Errorf("%s has no %q section — see stories/README.md for the shape", path, section)
 			}
 		}
 		if !strings.Contains(body, "Fixture: `stories/cluster`") {
@@ -75,7 +75,7 @@ func TestStoriesHaveTheirSections(t *testing.T) {
 	}
 }
 
-// TestStoriesNameNoKeys is the rule CONTRIBUTING.md calls the one hard rule.
+// TestStoriesNameNoKeys is the rule stories/README.md calls the one hard rule.
 //
 // It reads the story's *prose* only — the metadata block at the top names the trace
 // file and the fixture in backticks, which are paths, not keys — by skipping lines

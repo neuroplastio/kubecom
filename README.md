@@ -204,18 +204,13 @@ kubecom keys analyze trace.jsonl # read a --keylog trace back as findings
 ```
 
 `--keylog <file>` records what you pressed and how it resolved — the instrument
-behind [`stories/`](stories/). It is off unless you ask.
+behind [`stories/`](stories/). It is off unless you ask. To argue for a change in
+how kubecom *feels*, write a story: [`stories/README.md`](stories/README.md) says
+how.
 
 ## Contributing
 
-The rewrite is driven autonomously against the plan in [`vault/`](vault/) —
-goals, milestones, the live board, the decision log. If you'd like to contribute,
-open an issue first so we can align with the milestone plan; see
-[`CONTRIBUTING.md`](CONTRIBUTING.md).
-
-If what you want to change is how kubecom *feels* rather than what it does, write a
-**story**: the situation that made you want the change, so somebody else can walk
-it. There are five in [`stories/`](stories/) to copy the shape from.
+Issues, not pull requests: see [neuroplastio's contributing guide](https://github.com/neuroplastio/.github/blob/main/CONTRIBUTING.md).
 
 ## Special thanks
 

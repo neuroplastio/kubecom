@@ -4,10 +4,54 @@ A **story** is a goal a user has, walked against a known cluster, with the keyst
 recorded — the instrument this project uses to find out whether kubecom is actually
 pleasant to use (D268).
 
-A story states the state it begins from, the task in the user's words, and what to
-observe. It deliberately **does not say which keys to press**: which keys you reach for
-is the measurement. If the story tells you to press `L`, the trace only proves you can
-follow instructions.
+**The way to argue for a change in how kubecom feels is to write a story.** Not a
+description of the change — a description of the situation that made you want it.
+
+A UX argument written as an opinion ("the logs view should have X") can only be
+agreed or disagreed with. The same argument written as a story — *here is what I
+was trying to do, here is where I stalled* — can be **walked by somebody else**, and
+either it stalls them too or it does not. That is the difference between a
+preference and a finding, and it is the only way this project has of telling them
+apart, because there is no user research team here and no analytics.
+
+[neuroplastio's contributing guide](https://github.com/neuroplastio/.github/blob/main/CONTRIBUTING.md)
+has the general method. This page is kubecom's own: the shape its stories share,
+the rule its test enforces, the fixture, and the trace.
+
+## What a story is
+
+A goal somebody has, written so a stranger can walk it against a known cluster. A
+story states the state it begins from, the task in the user's words, and what to
+observe. The existing ones are listed [below](#the-stories) — read one before
+writing yours; they share a shape:
+
+| section | what goes in it |
+|---|---|
+| the metadata block | whether it is the main story, which fixture, where to write the trace |
+| **The situation** | the circumstances, in the second person. Why is this person at their terminal? |
+| **Your goal** | what they are trying to achieve — never how |
+| **When you're done** | what to report back |
+
+## The one hard rule: a story never names a key
+
+A story that says "press `L` to open the logs" measures whether you can follow
+instructions. A story that says "find out what that pod is printing" measures
+whether kubecom is discoverable — which is the thing actually in question. Which
+keys the walker reaches for **is the data**, so a story that supplies them has
+destroyed its own measurement.
+
+The same rule applies to naming the feature: "use the resource palette to…" is a
+key instruction wearing a different hat. Describe the goal and stop.
+
+A test enforces this (`internal/stories`), so a story that names keys, or lacks one
+of the three sections or its fixture line, fails `make check` rather than quietly
+producing a useless walk.
+
+## When a story is not the right tool
+
+Bugs, crashes and wrong output do not need one — they need an issue with the steps.
+Stories are for the class of problem where nothing is broken and the thing is still
+unpleasant to use, which is the class that otherwise gets argued about forever.
 
 ## The cluster
 
@@ -45,12 +89,18 @@ on it.
 S02 is the **main story** — the screencast (TAPE-01) and `docs/usage.md` (DOC-04) are
 both cut against it, so the demo, the docs and the test path stay one product.
 
-## Running one
+## Walking one
 
 ```bash
-./stories/cluster/up.sh
+./stories/cluster/up.sh                    # the fixture — same starting state every time
 ./stories/cluster/run.sh s02               # trace -> ~/traces/s02.jsonl
 ```
+
+Then walk it, and answer the questions at the end in your own words. The trace goes
+with what you wrote: it is what makes the story evidence rather than an anecdote.
+
+Without `run.sh`, `export KUBECOM_KEYLOG=~/traces/s02.jsonl` before `kubecom` records
+the same trace, but against your real config and cache.
 
 `run.sh` launches kubecom with a **throwaway user dir** (`XDG_CONFIG_HOME`/
 `XDG_CACHE_HOME` under `$TMPDIR`, wiped before every launch), so a walk starts with
@@ -66,3 +116,10 @@ the action counts, the longest
 pauses (where the walker stopped to think), and the sequences that were started
 but never finished. The most interesting line in a raw trace is a keypress that
 resolved to no action — that is someone reaching for a key kubecom does not have.
+That record is invisible in every other kind of report, including a screen
+recording, where it looks like nothing happening. The gaps between timestamps are
+the second signal: they are where the walker stopped to think.
+
+A trace records every keypress, which means everything you typed — filter queries,
+namespace and object names. Read it before you share it. (Keys pressed inside an
+exec shell or your `$EDITOR` never reach it; kubecom is suspended while those run.)

@@ -113,6 +113,9 @@ You decide everything. There is no one to ask. Therefore:
   `Blocks:` rather than claiming verification you couldn't perform (D79).
 - **Honor the decisions.** `vault/knowledge/decisions.md` is binding; supersede
   with a new decision rather than contradicting silently.
+- **No raw keys in view code.** Every action goes through the keymap registry, so
+  all of it stays rebindable. `docs/keybindings.md` is generated from that
+  registry, and `make check` fails if it drifts.
 
 ## Toolchain
 

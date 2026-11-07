@@ -3,7 +3,7 @@
 Live board for kubecom. See [`README.md`](README.md) for workflow and the item
 template. Status: `todo` · `in-progress` · `blocked` · `done`.
 
-_Last updated: 2026-10-30 — MYELIN-02 (myelin v0.2.0, cel-lite contexts, D305), DEPS-01 (Dependabot #200–#203) and GO-01 (Go 1.26.10, D306) landed; KEYS-05 (what the freed letters become) waits on the maintainer._
+_Last updated: 2026-11-07 — CONTRIB-01 (the org's contributing set, gov P-4) landed; KEYS-05 (what the freed letters become) waits on the maintainer._
 
 ## In Progress
 
